@@ -1,0 +1,34 @@
+# OS
+.DS_Store
+Thumbs.db
+
+# Editor / IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Dropbox
+.dropbox
+.dropbox.attr
+.dropbox.cache/
+
+# Obsidian (personal workspace state)
+.obsidian/
+
+# Playwright MCP cache
+.playwright-mcp/
+
+# Node
+node_modules/
+
+# 一時ファイル・作業メモ（CLAUDE.md 準拠）
+tmp/
+
+# リサーチ生データ（collect.js で再生成可能・サイズ大）
+# 特定ファイルをコミットしたい場合は下に ! で例外指定する
+research/*.json
+
+# リサーチレポート（ひとまず ignore。コミット運用を決めたら外す）
+reports/
