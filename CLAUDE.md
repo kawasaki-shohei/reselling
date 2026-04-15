@@ -4,12 +4,12 @@
 
 中国輸入物販ビジネスを支援するリポジトリ。メルカリ等のフリマサイトで売れ筋の商品をリサーチし、アリババ・ラクマートで仕入れ、国内で販売するまでの9工程（リサーチ／見積・発注／商品説明ページ作成／国際送料見積／検品／写真撮影／出品・SEO／梱包・発送／売上・在庫管理）を扱う。
 
-全体の業務フローは [`overview.md`](./overview.md) に記載。各工程の実行手順書は [`procedures/`](./procedures/) 配下に置く。現時点で構築済みなのは工程(1) 商品リサーチのパイプラインのみで、`research/collect.js`（Mercari API 収集）→ `research/analyze.js`（クラスタリング・メタデータ付与）→ 手動の禁止商品チェック → レポート化、という流れで仕入れ候補を抽出する。
+全体の業務フローは [`overview.md`](./overview.md) に記載。各工程の実行手順書は [`procedures/`](./procedures/) 配下に置く。現時点で構築済みなのは工程(1) 商品リサーチのパイプラインのみで、`research/collect.js`（Mercari API 収集）→ `research/analyze.js`（クラスタリング・メタデータ付与）→ 禁止商品チェック → `research/rival_count.js`（販売中ライバル数カウント）→ レポート化、という流れで仕入れ候補を抽出する。
 
 ## ディレクトリ構成
 
 ```
-china-import/
+reselling/
 ├── CLAUDE.md                          # プロジェクト設定（このファイル）
 ├── overview.md                        # プロジェクト全体の概要（物販フロー9工程）
 │
@@ -24,6 +24,7 @@ china-import/
 ├── research/                          # リサーチ用スクリプトとデータ
 │   ├── collect.js                     #   Mercari API 収集スクリプト
 │   ├── analyze.js                     #   クラスタリング・メタデータ付与
+│   ├── rival_count.js                 #   販売中ライバル数カウント（第4段階）
 │   └── *.json                         #   生データ・分析出力（gitignore）
 │
 ├── reports/YYYY/MM/                   # リサーチレポート（Markdown）
@@ -38,7 +39,7 @@ china-import/
 
 - **`procedures/`**: **実行する手順書**。物販フロー各工程の Step-by-Step 手順を置く。新しい工程の手順書を書いたらここに入れる
 - **`docs/`**: **読む資料**。手順書ではない背景ドキュメント、検討した代替案、リサーチ過程の記録、技術的背景ノートなど。`adr/` が「設計判断の記録」なのに対し、`docs/` は「判断に至る前の検討過程・参考情報」
-- **`research/`**: Mercari リサーチパイプラインの中核。`collect.js`（収集）と `analyze.js`（分析）のスクリプト本体、およびそれらの入出力 JSON を置く。生成データは `collect.js` で再生成可能なので git にはコミットしない（`.gitignore` 済み）
+- **`research/`**: Mercari リサーチパイプラインの中核。`collect.js`（収集）・`analyze.js`（分析）・`rival_count.js`（販売中ライバル数カウント）のスクリプト本体、およびそれらの入出力 JSON を置く。生成データは再生成可能なので git にはコミットしない（`.gitignore` 済み）
 - **`reports/YYYY/MM/`**: 最終レポート（仕入れ候補リスト）の保存先。年・月ディレクトリで整理する
 - **`references/`**: 禁止商品 PDF、発送方法早見表、SEO 資料など、**外部の**参考資料（自プロジェクト外のドキュメント）
 - **`adr/`**: 設計判断の記録（Architecture Decision Records）。判断の経緯・却下案・理由を残す
@@ -54,5 +55,6 @@ china-import/
 | 一時ファイル | `tmp/YYYY/MM/DD/YYYY_MM_DD_NN_ファイル名.md` |
 | 収集データ（生） | `research/YYYY_MM_DD_HHMMSS_mercari_14day_results.json` |
 | 分析出力 | `research/YYYY_MM_DD_HH_MM__candidates.json` / `_clusters.json` |
+| ライバル数カウント出力 | `research/YYYY_MM_DD_HH_MM__rivals.json` |
 
 **禁止:** ルートディレクトリ直下にスクリプトや JSON を置かない。
