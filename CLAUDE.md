@@ -17,9 +17,15 @@ reselling/
 │   └── mercari-research.md            #   工程(1) メルカリ売れ筋リサーチ
 │
 ├── docs/                              # 読む資料（背景・検討記録・参考資料）
-│   ├── mercari-research-alternatives.md  # メルカリリサーチで検討した代替手法（未採用）
 │   └── research/
-│       └── implementation-notes.md    #   研究用スクリプトの実装詳細・禁止事項
+│       └── mercari/
+│           ├── mercari-research-alternatives.md  # 検討した代替手法（未採用）
+│           ├── implementation-notes.md           # 研究用スクリプトの実装詳細・禁止事項
+│           ├── exclusion-keywords-supplement.md  # 除外タイトル補足（`references/*.pdf` の補完）
+│           └── judgment_examples/                # 同一商品判定の実例集（実遭遇ベース）
+│               ├── README.md                     # このディレクトリの主旨と想定ケース一覧
+│               ├── case{NN}_*.md                 # 個別の判定例
+│               └── images/                       # 各判定例のスクリーンショット
 │
 ├── research/                          # リサーチ用スクリプトとデータ
 │   ├── collect.js                     #   Mercari API 収集スクリプト
@@ -58,3 +64,30 @@ reselling/
 | ライバル数カウント出力 | `research/YYYY_MM_DD_HH_MM__rivals.json` |
 
 **禁止:** ルートディレクトリ直下にスクリプトや JSON を置かない。
+
+## フィードバック受領時の運用
+
+仕入れ判断や除外判定に関するフィードバックを受けたら、内容に応じて以下を提案すること。
+
+### 同一商品判定で迷うケースが含まれる場合
+
+色違い・個数違い・セット枚数違い・サイズ違い・柄違い・素材違い・用途違い・価格差・表記ゆれ など、「これは同じ商品か別の商品か」で判断が分かれる話が出てきたら:
+
+- `docs/research/mercari/judgment_examples/` に新しい `case{NN}_*.md` を追加するよう **提案する**
+- 実際の商品 URL とメルカリのスクリーンショット付きで記録すると、将来同じ判定に遭遇した際に参照できる
+- フォーマットは `case01_色違いは別商品.md` 準拠。構成は `judgment_examples/README.md` に記載
+- すでに同種の判定例がある場合は重複記録せず、差分や補強として注記するに留める
+
+### 機械的に除外できるキーワードが出てきた場合
+
+特定ブランド名・キャラクター名・模造品パターンなど、タイトルに含まれていたら機械的に仕入れ候補から外せる情報が出てきたら:
+
+- `docs/research/mercari/exclusion-keywords-supplement.md` の該当カテゴリに追記するよう **提案する**
+- `references/注意商品.pdf` と `references/new仕入れ禁止商品_アパレル.pdf` に明記されていない項目のみを追記する (PDF 記載分と重複しない)
+- 各行に「なぜ PDF だけでは分かりにくいか」を一緒に書く
+
+### 提案と実行の順序
+
+- どちらも、ユーザが「書いていい」と同意してから実際に書き込む
+- 勝手にファイルを追加・更新しない
+- 判断に迷う内容 (「これは判定例?」「除外キーワード?」「どちらでもない?」) は質問して確認する
