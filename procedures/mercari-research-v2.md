@@ -53,22 +53,25 @@ v2 は正解リスト (ground truth) を先に作り、それを基準に新ク�
 
 旧 `research/analyze.js` と `research/rival_count.js` は「タイトル先頭 28 文字の正規化完全一致」でクラスタリングする実装であり、上記の前提を満たしていない。同じ商品が別出品者によって違うタイトルで出品されていた場合、別クラスタになってしまい同一商品の取りこぼしが発生する。
 
-v2 ではこの問題を解消するため、Step B1 で各行から **実体属性を構造化フィールドとして抽出** し、その属性の一致で同一商品をまとめる設計にする (本手順書更新時点では設計検討中)。
+v2 ではこの問題を解消するため、後段で各行から **実体属性を構造化フィールドとして抽出** し、その属性の一致で同一商品をまとめる設計にする (本手順書更新時点では設計検討中)。
 
 ---
 
 ## 全体フロー (ここまでの確定範囲)
 
 ```
-1. 収集 (research/collect.js)
+1. 収集 (collect_step)
      ↓ 生データ (約 8,000 items, JSON)
-2. 販売実績の集約 (seller + title 単位、count で実績数を保持)
+2. 販売実績の集約 (aggregate_step) (seller + title 単位、count で実績数を保持)
      ↓ 約 7,000 エントリ (TSV)
-     ↓ count ≥ 3 は単独でクラスタ確定、count ≤ 2 は後段で合流判定
-3. Step A: 自動キーワード除外フラグ付け (Node)
+3. 暫定辞書の生成 (dictionary_expansion_step)
+     ├─ 正規辞書のみで一次除外を走らせて unflagged を得る
+     └─ Opus に unflagged を見せて新規キーワードを抽出 → keywords_pending.json
+4. キーワード除外 (keyword_exclusion_step)
+     ├─ 正規辞書 + 暫定辞書で判定
      ├─ flagged エントリ → 仕入れ候補から除外
-     └─ unflagged エントリ → Step B1 へ
-4. Step B1: LLM で主要ワード抽出 (Sonnet)
+     └─ unflagged エントリ → 次段へ
+5. 主要ワード抽出 (primary_token_extraction_step) (Sonnet)
      出力 = 各エントリに商品本質を表す 1-2 語
 ```
 
@@ -77,15 +80,16 @@ v2 ではこの問題を解消するため、Step B1 で各行から **実体属
 | 段階 | 入力 | 出力 | 前段比 | 初期比 |
 |---|---|---|---|---|
 | 1. 収集 (14日 SOLD) | - | 8,059 件 | - | 100% |
-| 2. 販売実績の集約 (seller+title 重複除去) | 8,059 件 | 7,223 件 | -10% | 89.6% |
-| 3. Step A 後 (flagged 除外、unflagged が残る) | 7,223 件 | 4,763 件 | -34% | 59.0% |
-| 4. Step B1 (主要ワード付与、件数は減らない) | 4,763 件 | 4,763 件 | 0% | 59.0% |
+| 2. 集約 (seller+title 重複除去) | 8,059 件 | 7,223 件 | -10% | 89.6% |
+| 3. 暫定辞書の生成 (件数は減らない) | 7,223 件 | 7,223 件 | 0% | 89.6% |
+| 4. キーワード除外 (flagged 除外、unflagged が残る) | 7,223 件 | 約 4,800 件 | -33% | 約 60% |
+| 5. 主要ワード抽出 (件数は減らない) | 約 4,800 件 | 約 4,800 件 | 0% | 約 60% |
 
-Step B2 (クラスタリング) 以降の件数は、クラスタリングロジックの設計で大きく変わる。現在まさにそのロジックの精度を上げるために設計を精査しているため、想定値は意図的に書かない (書くと将来のセッションがそれを事実として扱い、精度改善の前提が歪むため)。
+第 4 段階の unflagged 件数は辞書改善で変動する。最新の参考値は `docs/research/mercari/exclude_by_keywords_precision_check.md` を参照。クラスタリング以降の件数は、クラスタリングロジックの設計で大きく変わる。現在まさにそのロジックの精度を上げるために設計を精査しているため、想定値は意図的に書かない (書くと将来のセッションがそれを事実として扱い、精度改善の前提が歪むため)。
 
 ---
 
-## 第 1 段階: 収集
+## 第 1 段階: 収集 (collect_step)
 
 旧手順と同じ。`research/collect.js` を `browser_evaluate` 経由で実行して 14 日 SOLD データを収集する。
 
@@ -97,7 +101,7 @@ Step B2 (クラスタリング) 以降の件数は、クラスタリングロジ
 
 ---
 
-## 第 2 段階: 販売実績の集約 + TSV 化
+## 第 2 段階: 販売実績の集約 (aggregate_step)
 
 生データを `seller + title` で集約し、タイトル順にソートした TSV を作る。
 
@@ -108,7 +112,7 @@ Step B2 (クラスタリング) 以降の件数は、クラスタリングロジ
 - `count ≥ 3` のエントリはそれ単体で「14 日以内に同一商品が 3 件売れた」と確定
   → 仕入れ候補条件 (3 件以上) を満たすコアクラスタとして後段に渡る
 - `count = 1 or 2` のエントリは他出品者の同商品と合流 (後段のクラスタリング) できれば仕入れ候補条件を満たす可能性
-- Step A の処理対象を減らす効果もある (同じタイトルを何度も判定しない)
+- 後段のキーワード除外の処理対象を減らす効果もある (同じタイトルを何度も判定しない)
 
 ### 出力
 
@@ -121,38 +125,132 @@ Step B2 (クラスタリング) 以降の件数は、クラスタリングロジ
 ### 実行
 
 ```bash
-node -e '
-const d = require("./research/<rawfile>.json");
-const map = new Map();
-for (const it of d.items) {
-  const key = (it.sellerId || "?") + "||" + (it.name || "");
-  if (!map.has(key)) map.set(key, { ids: [], price_min: Infinity, price_max: 0, seller: it.sellerId, name: it.name });
-  const rec = map.get(key);
-  rec.ids.push(it.id);
-  if (it.price < rec.price_min) rec.price_min = it.price;
-  if (it.price > rec.price_max) rec.price_max = it.price;
-}
-const entries = [...map.values()].sort((a, b) => a.name.localeCompare(b.name, "ja"));
-const lines = entries.map(e => {
-  const pr = e.price_min === e.price_max ? `¥${e.price_min}` : `¥${e.price_min}-${e.price_max}`;
-  const cnt = e.ids.length > 1 ? `[${e.ids.length}件] ` : "";
-  return `${cnt}${pr}\t${e.seller}\t${e.name}\t${e.ids.join(",")}`;
-});
-require("fs").writeFileSync("tmp/<path>/all_items_sorted_from_<date>.tsv", lines.join("\n"));
-'
+node research/aggregate.js research/<rawfile>.json
 ```
+
+出力先を明示指定する場合:
+
+```bash
+node research/aggregate.js research/<rawfile>.json tmp/<path>/all_items_sorted_from_<date>.tsv
+```
+
+省略時は `tmp/YYYY/MM/DD/all_items_sorted_from_<生データ日付>.tsv` に自動配置される (ディレクトリは作業日 JST、ファイル名は入力ファイル名から抽出した日付)。
+
+実行後、stdout に summary JSON が出る:
+
+```json
+{
+  "input": "research/2026_04_16_06_46__mercari_14day_results.json",
+  "output": "tmp/2026/04/16/all_items_sorted_from_20260416.tsv",
+  "totalItems": 8059,
+  "uniqueRows": 7223,
+  "coreClusters_count_ge_3": 169
+}
+```
+
+`coreClusters_count_ge_3` は `count ≥ 3` のコアクラスタ数 (その時点で仕入れ候補条件を単独で満たす件数の目安)。
 
 ---
 
-## 第 3 段階: Step A (自動キーワード除外フラグ)
+## 第 3 段階: 暫定辞書の生成 (dictionary_expansion_step)
+
+正規辞書 `procedures/exclude_by_keywords/keywords.json` に加えて、**リサーチ実行時にそのリサーチ限りの暫定辞書 `keywords_pending.json` を別ファイルで生成**する段階。次の第 4 段階 (キーワード除外) は「正規辞書 + 暫定辞書」の合算で判定する。正規辞書への反映はリサーチ後の別プロセスで行う (本手順書の対象外)。
+
+### 狙い
+
+正規辞書は過去に確認済みのキーワードしかカバーできず、新しいブランド・商品名・カテゴリに追随できない。AI (Opus) の知識と当回の生タイトル群から「正規辞書に未登録で除外対象になり得るキーワード」を抽出し、その回のリサーチに即時反映する。正規辞書へ取り込むかどうかはリサーチ後に判断するため、ノイズ候補が正規辞書に混入するリスクは切り離される。
+
+### 前提条件
+
+- 第 2 段階 (集約) が完了し、生データ `research/<rawfile>.json` が存在する
+- 実装スクリプト: `research/expand_dictionary.js` (本段階専用) と `research/_classifier.js` (共通ロジック)
+
+### 入力
+
+- 生データ: `research/<rawfile>.json`
+- 参照される静的ファイル (スクリプトが Opus プロンプトに絶対パスを埋め込む):
+  - 正規辞書: `procedures/exclude_by_keywords/keywords.json`
+  - 設計メモ: `docs/research/mercari/keywords_design_notes.md`
+  - 参考 PDF: `references/注意商品.pdf`
+  - 参考 PDF: `references/new仕入れ禁止商品_アパレル.pdf`
+
+### 出力
+
+- `tmp/YYYY/MM/DD/dict_expansion/unflagged_titles.json` (Node 側で生成)
+- `tmp/YYYY/MM/DD/dict_expansion/opus_prompt.md` (Node 側で生成、絶対パス置換済みのサブエージェント用プロンプト)
+- `tmp/YYYY/MM/DD/dict_expansion/keywords_pending.json` (Opus サブエージェントが書き出す、次段の `--pending` 入力)
+
+フォーマットは正規辞書と同じ `priority` + `keywords`、加えて `_sources` で抽出根拠を併記。
+
+---
+
+### 手順 1: Node 側の事前処理
+
+正規辞書で一次除外をかけ、unflagged タイトルの抽出と Opus 用プロンプト (絶対パス置換済み) の生成まで 1 コマンドで実施する:
+
+```bash
+node research/expand_dictionary.js research/<rawfile>.json
+```
+
+省略可能な第 2 引数で出力先を明示指定できる (デフォルトは `tmp/YYYY/MM/DD/dict_expansion/`):
+
+```bash
+node research/expand_dictionary.js research/<rawfile>.json tmp/<path>/dict_expansion
+```
+
+stdout に生成ファイルのパスと `unflagged_count` が JSON で出る。
+
+---
+
+### 手順 2: Opus サブエージェントに抽出を依頼
+
+Claude Code の Agent ツール (`subagent_type=general-purpose`, `model=opus`) を起動し、手順 1 で生成された `opus_prompt.md` の **内容をそのまま** `prompt` 引数に渡す。プロンプト内の入出力パスは全て絶対パスで埋め込み済みのため、追加の置換は不要。
+
+Agent 完了後、指定した `keywords_pending.json` が書き出されている。
+
+---
+
+### 手順 3: 出力 JSON のバリデーション
+
+```bash
+node -e '
+const fs = require("fs");
+const p = JSON.parse(fs.readFileSync("tmp/<path>/dict_expansion/keywords_pending.json", "utf8"));
+const PRIORITY = ["food","plant_quarantine","medical","cosmetics_yakki","character_copyright","brand_imitation","electronics_check","handmade"];
+if (!Array.isArray(p.priority) || !p.keywords) throw new Error("Missing priority or keywords");
+let total = 0;
+for (const cat of Object.keys(p.keywords)) {
+  if (!PRIORITY.includes(cat)) throw new Error("Unknown category: " + cat);
+  total += p.keywords[cat].length;
+}
+console.log("OK. total new keywords:", total);
+'
+```
+
+バリデーションエラー時は手順 2 (Opus Agent) を再実行する (下記の再試行ルール参照)。
+
+---
+
+### エラー時の再試行ルール
+
+| エラー | 対処 |
+|---|---|
+| Opus 出力が JSON パースに失敗 | 「前回出力が JSON としてパースできませんでした。全量を JSON 形式で再生成してください」とフォローアップ |
+| カテゴリ名が 8 種以外 | 「カテゴリ名は food / plant_quarantine / medical / cosmetics_yakki / character_copyright / brand_imitation / electronics_check / handmade に限定してください」と伝えて該当箇所のみ修正させる |
+| 既存辞書との重複が多い | 重複分をバリデーションで除外し、残りだけで続行 |
+| 抽出数ゼロ | プロンプトの絶対パスが正しいか確認。それでもゼロなら本当に抽出すべきキーワードがない可能性もある |
+
+---
+
+## 第 4 段階: キーワード除外 (keyword_exclusion_step)
 
 タイトルにあらかじめ用意した除外キーワードが含まれていたら「除外フラグ」を付ける機械処理。LLM は使わず Node.js の `String.prototype.includes()` による部分文字列マッチ。数秒で全 7,000 件を処理できる。
 
 ### 目的
 
-明らかに仕入れ候補外のもの (食品・ブランド模造・キャラ・ハンドメイド 等) を機械的に除外する。
+明らかに仕入れ候補外のもの (食品・ブランド模造・キャラ・ハンドメイド 等) を機械的に除外する。第 3 段階で生成した暫定辞書と正規辞書の両方を合わせて判定する。
 
-### 分類カテゴリ (8 種類)
+### 分類カテゴリ (9 種類)
 
 | カテゴリ | 意味 |
 |---|---|
@@ -164,11 +262,12 @@ require("fs").writeFileSync("tmp/<path>/all_items_sorted_from_<date>.tsv", lines
 | `brand_imitation` | ブランド名記載 (模造品疑い) |
 | `electronics_check` | 電波法・PSE (Bluetooth 本体・スマートウォッチ等) |
 | `handmade` | ハンドメイド (中国輸入品ではない) |
+| `private_transaction` | 取引専用ページ (様専用・様リクエスト等、文字数制限で商品情報が欠落し仕入れ判断不能) |
 
 ### 優先度順序 (複数に該当した場合の primary 決定)
 
 ```
-food > plant_quarantine > medical > cosmetics_yakki > character_copyright > brand_imitation > electronics_check > handmade
+food > plant_quarantine > medical > cosmetics_yakki > character_copyright > brand_imitation > electronics_check > handmade > private_transaction
 ```
 
 全マッチは `matches` 配列にも残す。
@@ -184,95 +283,25 @@ food > plant_quarantine > medical > cosmetics_yakki > character_copyright > bran
 
 ### 辞書と実装の場所
 
-- **辞書**: `procedures/exclude_by_keywords/keywords.json`
+- **正規辞書**: `procedures/exclude_by_keywords/keywords.json`
+- **暫定辞書** (当回のみ): `tmp/YYYY/MM/DD/dict_expansion/keywords_pending.json` (第 3 段階の出力)
 - **実装スクリプト**: `research/exclude_by_keywords.js`
 - **設計原則・パターン** (notWith / withAll / 短語誤爆の対処): `docs/research/mercari/keywords_design_notes.md`
 - **精度確認と辞書更新の運用ルール**: `docs/research/mercari/exclude_by_keywords_precision_check.md`
 
 辞書を JSON にしてスクリプトと分離してあるので、辞書だけの編集で再判定できる (コード変更なし)。
 
-### 動的辞書拡張 (暫定辞書の生成)
-
-正規辞書 `keywords.json` に加えて、**リサーチ実行時にそのリサーチ限りの暫定辞書を別ファイルで生成**し、両方を Step A に適用する仕組み。正規辞書への反映はリサーチ後の別プロセス (§3.9) で行う。
-
-#### 狙い
-
-正規辞書は過去に確認済みのキーワードしかカバーできず、新しいブランド・商品名・カテゴリに追随できない。AI (Opus) の知識と当回の生タイトル群から「正規辞書に未登録で除外対象になり得るキーワード」を抽出し、その回のリサーチに即時反映する。正規辞書へ取り込むかどうかはリサーチ後に判断するため、ノイズ候補が正規辞書に混入するリスクは切り離される。
-
-#### 入力
-
-1. 正規辞書 `procedures/exclude_by_keywords/keywords.json`
-2. 設計メモ `docs/research/mercari/keywords_design_notes.md` (notWith / withAll のパターンを Opus に伝える)
-3. 参考 PDF
-   - `references/注意商品.pdf`
-   - `references/new仕入れ禁止商品_アパレル.pdf`
-4. 当回リサーチの全タイトル (第 2 段階の出力 TSV の title 列)
-
-#### 手順
-
-1. 第 3 段階 Step A を**正規辞書のみ**で一度実行し、flagged / unflagged を分離する
-2. unflagged のタイトル群と、上記 1〜3 の資料をコンテキストとして Opus に渡す
-3. Opus に「このタイトル群に含まれ、かつ正規辞書に未登録で除外対象になり得るキーワード」を抽出させる
-4. 抽出結果を `tmp/YYYY/MM/DD/keywords_pending.json` として出力する (正規辞書と同じフォーマット: `priority` + `keywords`)
-5. **正規辞書 + 暫定辞書の両方**を使って Step A を再実行し、当回リサーチ用の flagged を確定させる
-
-#### 暫定辞書のフォーマット
-
-正規辞書と同じ構造:
-
-```json
-{
-  "priority": [
-    "food", "plant_quarantine", "medical", "cosmetics_yakki",
-    "character_copyright", "brand_imitation", "electronics_check", "handmade"
-  ],
-  "keywords": {
-    "food": ["新規候補1", "新規候補2"],
-    "brand_imitation": [
-      { "keyword": "新規候補", "notWith": ["除外したい文脈"] }
-    ]
-  }
-}
-```
-
-#### `exclude_by_keywords.js` の実装要件
-
-暫定辞書を併用するため、スクリプトに `--pending <path>` オプションを追加する:
-
-```bash
-# 通常 (正規辞書のみ)
-node research/exclude_by_keywords.js tmp/<path>/all_items_sorted_from_<date>.tsv
-
-# 暫定辞書を併用
-node research/exclude_by_keywords.js \
-  tmp/<path>/all_items_sorted_from_<date>.tsv \
-  --pending tmp/<path>/keywords_pending.json
-```
-
-マージルール:
-- カテゴリごとにキーワード配列を concat
-- 重複キーワードは正規辞書側を優先 (暫定辞書側を無視)
-- `notWith` 付きオブジェクトはそのまま保持
-- `priority` は正規辞書のものを使用 (暫定辞書側は無視)
-
-#### Opus に渡すプロンプトの要件 (目安)
-
-- 既存 `keywords.json` のキーワードを出力に含めない (重複禁止)
-- 短語・一般語は単独キーワードにせず、notWith / withAll / 具体語への置き換えを検討する (`keywords_design_notes.md` 参照)
-- 各候補を priority の 8 カテゴリのいずれかに分類する
-- 各候補について、抽出根拠となったタイトル例を 1 件以上併記する (§3.9 の昇格判断で使う)
-- 短語で誤爆しそうな候補には notWith を併記する
-
 ### 実行
 
 ```bash
-node research/exclude_by_keywords.js tmp/<path>/all_items_sorted_from_<date>.tsv
+node research/exclude_by_keywords.js research/<rawfile>.json tmp/<path>/exclusion_final \
+  --pending tmp/<path>/dict_expansion/keywords_pending.json
 ```
 
 出力:
 
-- `tmp/<path>/gt_chunks_<date>/step_a_auto_exclusion.json` (全 unique row と仮フラグ)
-- `tmp/<path>/gt_chunks_<date>/step_a_stats.md` (カテゴリ別件数の統計サマリー)
+- `tmp/<path>/exclusion_final/exclusion_output.json` (全 unique row と仮フラグ、最終版)
+- `tmp/<path>/exclusion_final/exclusion_stats.md` (カテゴリ別件数の統計サマリー)
 
 出力 JSON の各行:
 
@@ -292,36 +321,39 @@ node research/exclude_by_keywords.js tmp/<path>/all_items_sorted_from_<date>.tsv
 }
 ```
 
-`exclusion: null` なら印なし → Step B1 へ進む
+`exclusion: null` なら印なし → 第 5 段階へ進む
 `exclusion != null` なら印あり → 仕入れ候補から除外
 
-### 参考値 (2026-04-16 データ、7,223 unique 行、辞書改善後)
+### 参考値 (2026-04-16 データ、7,223 unique 行、正規辞書のみ・2026-04-19 時点)
 
 | カテゴリ | 件数 | 割合 |
 |---|---|---|
-| food | 305 | 4.2% |
+| food | 268 | 3.7% |
 | plant_quarantine | 22 | 0.3% |
 | medical | 1 | 0.0% |
-| cosmetics_yakki | 250 | 3.5% |
-| character_copyright | 1,064 | 14.7% |
-| brand_imitation | 283 | 3.9% |
+| cosmetics_yakki | 231 | 3.2% |
+| character_copyright | 1,035 | 14.3% |
+| brand_imitation | 314 | 4.3% |
 | electronics_check | 25 | 0.3% |
-| handmade | 155 | 2.1% |
-| **unflagged** | **5,118** | **70.9%** |
+| handmade | 130 | 1.8% |
+| private_transaction | 364 | 5.0% |
+| **unflagged** | **4,833** | **66.9%** |
+
+辞書改善・withAll 追加で変動。最新の参考値は `docs/research/mercari/exclude_by_keywords_precision_check.md` を参照。
 
 ---
 
-## 第 4 段階: Step B1 (LLM 主要ワード抽出)
+## 第 5 段階: 主要ワード抽出 (primary_token_extraction_step)
 
-Step A の unflagged 行を対象に、「この商品は何か」を表す主要ワード 1〜2 語を LLM (Sonnet) で抽出する。
+第 4 段階の unflagged 行を対象に、「この商品は何か」を表す主要ワード 1〜2 語を LLM (Sonnet) で抽出する。
 
 ### 目的
 
-後段のクラスタリング (B2) で同じ商品を束ねるためのキー。タイトル文字列そのまま (表記揺れ多数) ではなく、**本質を表す正規化された語** を用意する。
+後段のクラスタリングで同じ商品を束ねるためのキー。タイトル文字列そのまま (表記揺れ多数) ではなく、**本質を表す正規化された語** を用意する。
 
 ### 入力
 
-- Step A で `exclusion: null` だった行 (unflagged)
+- 第 4 段階で `exclusion: null` だった行 (unflagged)
 
 ### モデルとコスト
 
@@ -336,8 +368,8 @@ unflagged 行を 12 チャンク程度 (400 行 × n) に分割する:
 ```bash
 node -e '
 const fs = require("fs");
-const stepA = JSON.parse(fs.readFileSync("tmp/<path>/step_a_auto_exclusion.json", "utf8"));
-const targets = stepA.rows.filter(r => r.exclusion === null);
+const out = JSON.parse(fs.readFileSync("tmp/<path>/exclusion_final/exclusion_output.json", "utf8"));
+const targets = out.rows.filter(r => r.exclusion === null);
 
 const CHUNK = 400;
 for (let i = 0; i < Math.ceil(targets.length / CHUNK); i++) {
@@ -477,43 +509,50 @@ console.log("total:", merged.length);
 
 ```
 tmp/YYYY/MM/DD/
-├── all_items_sorted_from_YYYYMMDD.tsv            # 第 2 段階
-├── gt_chunks_YYYYMMDD/
-│   ├── step_a_auto_exclusion.json                # 第 3 段階 Step A 出力
-│   └── step_a_stats.md                           # 第 3 段階 Step A サマリー
+├── all_items_sorted_from_YYYYMMDD.tsv            # 第 2 段階 集約出力
+├── dict_expansion/                               # 第 3 段階 暫定辞書生成
+│   ├── unflagged_titles.json                     #   正規辞書のみで仕分けた候補タイトル
+│   ├── opus_prompt.md                            #   Opus サブエージェント用プロンプト
+│   └── keywords_pending.json                     #   Opus が書き出す暫定辞書
+├── exclusion_final/                              # 第 4 段階 最終除外出力
+│   ├── exclusion_output.json                     #   正規辞書 + 暫定辞書で最終判定
+│   └── exclusion_stats.md
 ├── fullrun_chunks/
-│   ├── chunk_00.tsv ... chunk_NN.tsv             # 第 4 段階 Step B1 入力
-│   └── keywords_chunk_00.json ... NN.json        # 第 4 段階 Step B1 出力
-└── keywords_full_sonnet.json                     # 第 4 段階 Step B1 統合
+│   ├── chunk_00.tsv ... chunk_NN.tsv             # 第 5 段階 入力
+│   └── keywords_chunk_00.json ... NN.json        # 第 5 段階 出力
+└── keywords_full_sonnet.json                     # 第 5 段階 統合
 ```
 
 永続ファイル (git 管理):
 
 ```
-procedures/exclude_by_keywords/keywords.json                   # Step A 辞書 (定期更新)
-research/exclude_by_keywords.js                                # Step A 実装スクリプト
+procedures/exclude_by_keywords/keywords.json                   # 正規辞書 (定期更新)
+research/aggregate.js                                          # 第 2 段階の実装スクリプト
+research/expand_dictionary.js                                  # 第 3 段階の実装スクリプト
+research/exclude_by_keywords.js                                # 第 4 段階の実装スクリプト
+research/_classifier.js                                        # 第 3・4 段階の共通ロジック (内部ヘルパー)
 ```
 
 ---
 
 ## この先
 
-第 4 段階 (Step B1) の出力が揃った時点で、以下が揃う:
+第 5 段階の出力が揃った時点で、以下が揃う:
 
-- Step A で除外された 2,400 件前後 (約 6% は誤判定で本来は救済すべきだが、辞書改善で対処)
-- Step B1 の主要ワード付き unflagged 4,700 件前後
+- 第 4 段階で除外された約 2,400 件 (誤判定の約 6% は辞書改善で対処中)
+- 第 5 段階の主要ワード付き unflagged 約 4,800 件
 
-これらを元に「仕入れ候補プール + 主要ワード」を整理し、次のステップ (Step B2 クラスタリング以降) に進む。以降の手順は実装・検証が終わってから追加する。
+これらを元に「仕入れ候補プール + 主要ワード」を整理し、次のステップ (クラスタリング以降) に進む。以降の手順は実装・検証が終わってから追加する。
 
 ---
 
-## 補足: Step C (LLM による誤判定見直し) を採用しなかった理由
+## 補足: LLM による全件誤判定見直しを採用しなかった理由
 
-2026-04-18 の検証で以下が判明したため、Step C は採用しない:
+2026-04-18 の検証で以下が判明したため、LLM による全件画像判定は採用しない:
 
-- Step A の精度は 92.7% で、誤判定は 6% 程度 (150 件の層別サンプリング検証)
-- 誤判定のほぼ全ては「一般語の部分文字列マッチ」が原因 (上記「誤判定の主なパターン」参照)
-- これらは Step A 辞書の改善 (単語境界マッチ/組み合わせマッチ/文脈除外) で大半を潰せる
-- Step C (LLM + 画像判定) を全件走らせるコスト ($15-20 + 数時間) に対して、Step A 辞書改善の方がコスト効率が高い
+- 第 4 段階 (キーワード除外) の精度は 92.7% で、誤判定は 6% 程度 (150 件の層別サンプリング検証)
+- 誤判定のほぼ全ては「一般語の部分文字列マッチ」が原因
+- これらは辞書改善 (単語境界マッチ/組み合わせマッチ/文脈除外) で大半を潰せる
+- LLM + 画像判定を全件走らせるコスト ($15-20 + 数時間) に対して、辞書改善の方がコスト効率が高い
 
-Step C の検証作業の記録は `tmp/2026/04/17/step_c_*` および `tmp/2026/04/17/gt_sample_150/` に残してある。
+関連検証作業の記録は `tmp/2026/04/17/step_c_*` および `tmp/2026/04/17/gt_sample_150/` に残してある。

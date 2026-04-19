@@ -10,7 +10,8 @@
 
 このリポジトリは **中国輸入物販** の業務支援プロジェクト。メルカリ等のフリマサイトで売れ筋商品を調査 → アリババ/ラクマートで仕入れ → 国内販売、という 9 工程を扱う。詳細は [`overview.md`](../../../overview.md) 参照。
 
-工程 (1) の「メルカリ売れ筋リサーチ」は、生データ収集 → 除外フラグ付け → 主要ワード抽出 → クラスタリング → 仕入れ候補リスト化、という流れ。`research/exclude_by_keywords.js` はこのうち「除外フラグ付け」の段階を担当する (手順書 [`procedures/mercari-research-v2.md`](../../../procedures/mercari-research-v2.md) では「第 3 段階」あるいは「Step A」と呼称)。
+工程 (1) の「メルカリ売れ筋リサーチ」は、生データ収集 → 暫定辞書の生成 → キーワード除外 → 主要ワード抽出 → クラスタリング → 仕入れ候補リスト化、という流れ。`research/exclude_by_keywords.js` はこのうち第 3 段階 (`dictionary_expansion_step` の一次除外) と第 4 段階 (`keyword_exclusion_step` の最終判定) の両方で使う (手順書 [`procedures/mercari-research-v2.md`](../../../procedures/mercari-research-v2.md) 参照)。
+
 
 このスクリプトの役割: **メルカリタイトルから、明らかに仕入れ候補外のもの (食品・ブランド模造・キャラ版権 等) を機械的に除外する**。
 
@@ -62,13 +63,13 @@
 
 ### 4.1 辞書更新のきっかけ
 
-Step A の辞書は **時間とともに陳腐化する**。以下のきっかけで辞書を更新する:
+キーワード除外 (`keyword_exclusion_step`) の正規辞書は **時間とともに陳腐化する**。以下のきっかけで辞書を更新する:
 
 - **仕入れ判断者からの新しい除外ルールの申し入れ** (新ブランド・新キャラクター・新パターン)
 - **リサーチで誤判定 (rescue) が発見された** → 単語境界/組み合わせ/文脈除外のルールを追加 (パターンは `keywords_design_notes.md` 参照)
 - **`references/注意商品.pdf` / `references/new仕入れ禁止商品_アパレル.pdf` の更新** → PDF 内の新規禁止商品を辞書に反映
 - **`docs/research/mercari/keywords_design_notes.md` の追記** → 新しい誤爆パターン・組み合わせ判定の知見が見つかったとき、設計メモを更新し、必要に応じて keywords.json 側の構造 (notWith / withAll) に反映
-- **動的辞書拡張 (暫定辞書) の昇格判断** → リサーチ実行時に生成された暫定辞書 (`mercari-research-v2.md` §3.8) から継続利用に値するキーワードを選定して反映
+- **動的辞書拡張 (暫定辞書) の昇格判断** → リサーチ実行時に生成された暫定辞書 (`mercari-research-v2.md` の `dictionary_expansion_step`) から継続利用に値するキーワードを選定して反映
 
 更新後は `research/exclude_by_keywords.js` を再実行すれば、過去データで再判定できる (数秒で完了、コストほぼゼロ)。
 
@@ -89,7 +90,7 @@ Step A の辞書は **時間とともに陳腐化する**。以下のきっか�
 
 - **判定ロジック**: `research/exclude_by_keywords.js` が部分文字列マッチ (`.includes()`) で除外フラグを付ける
 - **辞書の形式**: `procedures/exclude_by_keywords/keywords.json` が JSON 形式で、`priority` 配列 + `keywords` オブジェクト (カテゴリ名 → キーワード配列の辞書) を持つ
-- **分類カテゴリ**: 8 種類 (`food`, `plant_quarantine`, `medical`, `cosmetics_yakki`, `character_copyright`, `brand_imitation`, `electronics_check`, `handmade`)
+- **分類カテゴリ**: 9 種類 (`food`, `plant_quarantine`, `medical`, `cosmetics_yakki`, `character_copyright`, `brand_imitation`, `electronics_check`, `handmade`, `private_transaction`)
 - **primary の決定方法**: 上記カテゴリ間の優先度 (配列順) で決まる
 - **出力の構造**: 各行に `exclusion: { primary, matches }` が付く。`exclusion === null` なら除外対象ではない
 - **画像の取得**: 生データ (`research/*mercari_14day_results.json`) の各 item に `thumbnail` URL があり、そこから画像をダウンロードできる
@@ -119,10 +120,10 @@ Step A の辞書は **時間とともに陳腐化する**。以下のきっか�
 ### 7.1 スクリプトを実行して flagged を取得
 
 ```bash
-node research/exclude_by_keywords.js research/<latest_raw>.json tmp/<path>/gt_chunks_<date>
+node research/exclude_by_keywords.js research/<latest_raw>.json tmp/<path>/exclusion_<date>
 ```
 
-出力: `<output_dir>/step_a_auto_exclusion.json` (全ユニーク行、`exclusion !== null` が flagged)。
+出力: `<output_dir>/exclusion_output.json` (全ユニーク行、`exclusion !== null` が flagged)。
 
 ### 7.2 層別サンプリング
 
@@ -139,8 +140,8 @@ Node スクリプト例 (シード固定で再現性を確保):
 
 ```js
 const fs = require("fs");
-const stepA = JSON.parse(fs.readFileSync("tmp/<path>/step_a_auto_exclusion.json", "utf8"));
-const flagged = stepA.rows.filter(r => r.exclusion !== null);
+const out = JSON.parse(fs.readFileSync("tmp/<path>/exclusion_output.json", "utf8"));
+const flagged = out.rows.filter(r => r.exclusion !== null);
 
 const byCat = {};
 for (const r of flagged) {
@@ -448,7 +449,7 @@ for (const [cat, s] of Object.entries(byCat)) {
 
 #### 新規キーワード追加 (15 語以上)
 
-GT 訂正で判明した「Step A 辞書の漏れ」を明示的に追加:
+GT 訂正で判明した「キーワード除外辞書の漏れ」を明示的に追加:
 
 | カテゴリ | 追加キーワード |
 |---|---|
@@ -511,7 +512,7 @@ GT 訂正で判明した「Step A 辞書の漏れ」を明示的に追加:
 
 | フィールド | 内容 |
 |---|---|
-| `rowIndex` | 元データ (step_a_auto_exclusion.json) のインデックス |
+| `rowIndex` | 元データ (exclusion_output.json) のインデックス |
 | `title` | 商品タイトル |
 | `primary` | スクリプトが付けた代表カテゴリ |
 | `matches` | スクリプトがヒットした全マッチ情報 (primary 以外も含む) |
@@ -528,7 +529,7 @@ GT 訂正で判明した「Step A 辞書の漏れ」を明示的に追加:
 ```
 tmp/YYYY/MM/DD/exclude_by_keywords_precision_check/
 ├── README.md                         # 検証の概要・進捗状況
-├── step_a_auto_exclusion.json        # exclude_by_keywords.js の生出力
+├── exclusion_output.json             # exclude_by_keywords.js の生出力
 ├── flagged_all.json                  # 判定対象の入力情報
 ├── batches/batch_NNN.json            # バッチごとの入力
 ├── results/batch_NNN_result.json     # バッチごとの判定結果
