@@ -32,3 +32,6 @@ research/*.json
 
 # リサーチレポート（ひとまず ignore。コミット運用を決めたら外す）
 reports/
+
+# 仕入れ判断者からのフィードバック（個別回答が含まれるため共有しない）
+docs/research/mercari/feedbacks/
