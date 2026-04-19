@@ -6,6 +6,16 @@
 
 全体の業務フローは [`overview.md`](./overview.md) に記載。各工程の実行手順書は [`procedures/`](./procedures/) 配下に置く。現時点で構築済みなのは工程(1) 商品リサーチのパイプラインのみで、`research/collect.js`（Mercari API 収集）→ `research/analyze.js`（クラスタリング・メタデータ付与）→ 禁止商品チェック → `research/rival_count.js`（販売中ライバル数カウント）→ レポート化、という流れで仕入れ候補を抽出する。
 
+## 登場人物
+
+- **対話相手 (Claude と会話している人)**: エンジニア。このリサーチツールを開発している人。
+- **陽平 = 仕入れ判断者**: 非エンジニア。実際に中国輸入物販の仕入れ判断を行うビジネス側の人。**対話相手 (開発者) とは別人**。フィードバック文書 (PDF や md) とリサーチ結果を通じて判定ルール・除外ルールを伝える。
+
+### 書き方の規約
+
+- プロジェクト内のドキュメント (手順書・判定ルール・レポート・tmp 配下メモ・判定例 等) では **「陽平」という固有名詞は書かず、必要な文脈のみ「仕入れ判断者」と書く**
+- 本 CLAUDE.md のこの節は対応関係を記録するための唯一の例外。新セッションの Claude が過去ログ・旧ファイルで「陽平」という名前を見かけた際に、それが誰を指すか把握できるようにする目的
+
 ## ディレクトリ構成
 
 ```
@@ -21,7 +31,7 @@ reselling/
 │       └── mercari/
 │           ├── mercari-research-alternatives.md  # 検討した代替手法（未採用）
 │           ├── implementation-notes.md           # 研究用スクリプトの実装詳細・禁止事項
-│           ├── exclusion-keywords-supplement.md  # 除外タイトル補足（`references/*.pdf` の補完）
+│           ├── keywords_design_notes.md          # 除外辞書の設計メモ（パターン・原則）
 │           └── judgment_examples/                # 同一商品判定の実例集（実遭遇ベース）
 │               ├── README.md                     # このディレクトリの主旨と想定ケース一覧
 │               ├── case{NN}_*.md                 # 個別の判定例
@@ -82,9 +92,11 @@ reselling/
 
 特定ブランド名・キャラクター名・模造品パターンなど、タイトルに含まれていたら機械的に仕入れ候補から外せる情報が出てきたら:
 
-- `docs/research/mercari/exclusion-keywords-supplement.md` の該当カテゴリに追記するよう **提案する**
-- `references/注意商品.pdf` と `references/new仕入れ禁止商品_アパレル.pdf` に明記されていない項目のみを追記する (PDF 記載分と重複しない)
-- 各行に「なぜ PDF だけでは分かりにくいか」を一緒に書く
+- **単独キーワードは `procedures/exclude_by_keywords/keywords.json` に追加するよう提案する**
+- 追加前に最新のリサーチデータで検索し、**誤爆** (短語が一般語と紛れる等) がないか必ず確認する
+- 誤爆があれば `notWith` で対処、組み合わせ判定が必要なら `withAll` で対処 (詳細は `docs/research/mercari/keywords_design_notes.md` 参照)
+- 新しい**設計パターン・注意点**が見つかった場合のみ `keywords_design_notes.md` に追記する
+- 追加理由は Git コミットメッセージに残す (個別キーワードの WHY を別ドキュメントに書かない)
 
 ### 提案と実行の順序
 
