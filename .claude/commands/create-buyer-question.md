@@ -66,10 +66,16 @@ description: 仕入れ判断者向けに、商品画像と URL を添えた辞�
    - `## 返信方法`: Google Doc にコメント or スレッド回答
 5. ファイル名: `YYYY_MM_DD_NN_question_{テーマ}.md` (NN は同日内の枝番)
    - 同日の既存ファイルを確認して NN を決める
-6. 作業完了後、以下を報告:
-   - 保存先フルパス
+6. **Google Drive の質問フォルダに自動アップロード** (オプションではなく必須手順):
+   - MCP ツール `mcp__google-drive-manager__upload_markdown_as_google_doc` を使用
+   - `drive_folder_id`: `1rPBq2N3fH-TqyuqqZt3klxtyLUcrsgsp` (質問フォルダ)
+   - `doc_title`: ファイル名 (拡張子なし)
+   - 画像埋め込みのため pandoc 経由で Google Docs に変換される
+   - 同名の Google Docs があれば上書きされる
+7. 作業完了後、以下を報告:
+   - 保存先フルパス (ローカル)
    - コピーした画像ファイルのリスト
-   - Google Drive の「質問」フォルダにアップロードするかユーザーに確認
+   - **Google Docs の URL** (アップロード結果の `web_view_link`)
 
 ---
 
@@ -82,10 +88,16 @@ description: 仕入れ判断者向けに、商品画像と URL を添えた辞�
 
 ---
 
-## Google Drive へのアップロード (オプション)
+## Google Drive へのアップロード (標準手順)
 
-ユーザーが希望すれば、MCP ツール `mcp__google-drive-manager__upload_markdown_as_google_doc` を使って「質問」フォルダ (folder_id: `1rPBq2N3fH-TqyuqqZt3klxtyLUcrsgsp`) にアップロードします。
-画像埋め込みのため pandoc 経由で Google Docs に変換される点に注意。
+md 生成後は**必ず**「質問」フォルダに Google Docs としてアップロードする (作成手順 6 の通り):
+
+- MCP ツール: `mcp__google-drive-manager__upload_markdown_as_google_doc`
+- `md_path`: ローカル md の絶対パス
+- `drive_folder_id`: `1rPBq2N3fH-TqyuqqZt3klxtyLUcrsgsp` (質問フォルダ)
+- `doc_title`: ファイル名 (拡張子なし)
+
+画像埋め込みのため pandoc 経由で Google Docs に変換される。同名 Docs があれば上書きされる。アップロード結果の `web_view_link` をユーザーに報告する。
 
 ---
 
@@ -93,3 +105,30 @@ description: 仕入れ判断者向けに、商品画像と URL を添えた辞�
 
 - ユーザーの意向を推測して勝手に判断テーマ・質問文・選択肢を追加しない
 - 必ず質問テーマごとに背景と質問文をユーザーに確認してから md を生成する
+
+### 実装用語・技術詳細を書かない (最重要)
+
+**仕入れ判断者は非エンジニアである**。判断依頼 md に以下のような実装詳細を書いてはいけない。これらを書くと仕入れ判断者は読めない:
+
+- **辞書のカテゴリ名**: `food` / `plant_quarantine` / `medical` / `cosmetics_yakki` / `character_copyright` / `brand_imitation` / `electronics_check` / `handmade` などの内部カテゴリ名
+- **実装ファイル名**: `keywords.json` / `exclude_by_keywords.js` / `expand_dictionary.js` / `_classifier.js` などのファイル名・パス
+- **技術概念**: flagged / unflagged / primary / matches / priority / notWith / withAll / rowIndex / 辞書 / キーワード / マッチ / 部分文字列 / 除外フラグ
+- **内部の経緯説明**: 「前セッションで〇〇カテゴリから削除されていた」「誤登録されていた」「辞書追加漏れ」などの実装履歴
+- **実装アクションを選択肢にしない**: 「〇〇カテゴリに追加」「キーワード登録する」「notWith を足す」「辞書から削除」などを A/B/C の選択肢に置かない
+
+### 選択肢はビジネス判断で書く
+
+選択肢はあくまで**仕入れ判断者のビジネス判断**として書く。例:
+
+- 良い例: 「全部仕入れ候補から外す」「大人向けは残す、子供向けは外す」「このブランドの商品は仕入れ対象」
+- 悪い例: 「brand_imitation カテゴリに追加」「notWith に追記」「辞書からキーワード削除」
+
+### 識別子の書き方
+
+商品の識別は **通し番号** (「商品 1」「商品 2」...) で書く。`rowIndex {N}` のような内部インデックスは使わない (画像ファイル名の内部パスとしては使っても、md の見出し・本文には出さない)。
+
+### 背景説明の書き方
+
+背景は**今何に困っているか / 何を決めたいか**だけを、仕入れ判断者の視点で書く。中の実装がどう動いているか・過去にどう直したかは書かない。
+
+「4/16 のリサーチ結果にこういう商品が N 件あります。PDF のこの記述に該当するかもしれないので方針を決めたいです」のように、**「商品」と「PDF」と「ビジネス判断」**だけで構成する。
