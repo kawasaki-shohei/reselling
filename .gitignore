@@ -30,8 +30,22 @@ tmp/
 # 特定ファイルをコミットしたい場合は下に ! で例外指定する
 research/*.json
 
+# パイプライン実行出力（各段階の中間・最終成果物。サイズ大・再生成可能）
+# runs/ ディレクトリ自体は残したいので .gitkeep だけ許可、配下は無視
+research/runs/*
+!research/runs/.gitkeep
+
 # リサーチレポート（ひとまず ignore。コミット運用を決めたら外す）
 reports/
+# 精度検証レポートのディレクトリ自体は残したいので .gitkeep だけ許可、配下は ignore
+!procedures/exclude_by_keywords_precision_check/reports/
+procedures/exclude_by_keywords_precision_check/reports/*
+!procedures/exclude_by_keywords_precision_check/reports/.gitkeep
 
 # 仕入れ判断者からのフィードバック（個別回答が含まれるため共有しない）
 docs/research/mercari/feedbacks/
+
+# 精度検証の実行ログ（エージェント生成物、サイズ大・再生成可能）
+# runs/ ディレクトリ自体は残したいので .gitkeep だけ許可、配下は無視
+procedures/exclude_by_keywords_precision_check/runs/*
+!procedures/exclude_by_keywords_precision_check/runs/.gitkeep

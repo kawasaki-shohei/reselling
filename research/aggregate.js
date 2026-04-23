@@ -10,7 +10,7 @@
 //
 // 例:
 //   node research/aggregate.js research/2026_04_16_06_46__mercari_14day_results.json
-//   node research/aggregate.js research/xxx.json tmp/2026/04/19/all_items_sorted_from_20260416.tsv
+//   node research/aggregate.js research/xxx.json research/runs/2026_04_16_06_46/aggregate/all_items_sorted_from_20260416.tsv
 //
 // 出力 TSV 1 行フォーマット:
 //   [count件] ¥price <TAB> seller_id <TAB> title <TAB> item_ids
@@ -21,6 +21,7 @@
 
 const fs = require('fs');
 const path = require('path');
+const { extractTimestamp, getRunDir } = require('./_run_paths');
 
 const argInput = process.argv[2];
 if (!argInput) {
@@ -56,23 +57,13 @@ const lines = entries.map(e => {
   return `${cnt}${pr}\t${e.seller}\t${e.name}\t${e.ids.join(',')}`;
 });
 
-// 出力先決定: 第 2 引数があればそれを使用。なければ tmp/YYYY/MM/DD/ 配下に自動配置
-// - ディレクトリは作業日 (JST) 基準
-// - ファイル名は入力ファイル名から取れる日付、取れなければ作業日
+// 出力先決定: 第 2 引数があればそれを使用。なければ research/runs/<ts>/aggregate/ に配置
+// <ts> (= YYYY_MM_DD_HH_MM) は生データファイル名から抽出する (_run_paths.extractTimestamp)
 let outPath = process.argv[3];
 if (!outPath) {
-  const now = new Date();
-  const jst = new Date(now.getTime() + 9 * 60 * 60 * 1000);
-  const y = jst.getUTCFullYear();
-  const m = String(jst.getUTCMonth() + 1).padStart(2, '0');
-  const day = String(jst.getUTCDate()).padStart(2, '0');
-  const workYmd = `${y}${m}${day}`;
-
-  const inputBase = path.basename(argInput);
-  const match = inputBase.match(/^(\d{4})_(\d{2})_(\d{2})/);
-  const sourceYmd = match ? `${match[1]}${match[2]}${match[3]}` : workYmd;
-
-  const baseDir = path.join('tmp', String(y), m, day);
+  const ts = extractTimestamp(argInput);
+  const sourceYmd = ts.slice(0, 10).replace(/_/g, ''); // YYYYMMDD
+  const baseDir = getRunDir(argInput, 'aggregate');
   outPath = path.join(baseDir, `all_items_sorted_from_${sourceYmd}.tsv`);
 }
 

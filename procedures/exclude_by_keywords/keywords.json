@@ -8,6 +8,7 @@
     "brand_imitation",
     "electronics_check",
     "handmade",
+    "underwear",
     "private_transaction"
   ],
   "keywords": {
@@ -55,7 +56,10 @@
       "紅茶葉",
       "TULIP 250",
       "チョコケーキ",
-      "胡蝶蘭"
+      "胡蝶蘭",
+      "哺乳瓶", "離乳食",
+      "美濃焼", "波佐見焼", "益子焼",
+      { "keyword": "スタイ", "notWith": ["スタイリッシュ", "スタイル", "スタイプ"] }
     ],
     "plant_quarantine": [
       "観葉植物", "フィロデンドロン", "セローム", "モンステラ",
@@ -118,7 +122,14 @@
       "CICA", "シカ成分",
       "フェイスパウダー", "ルースパウダー", "プレストパウダー", "ミネラルパウダー", "ベビーパウダー",
       "PROBIODERM", "Browcharm", "rms beauty", "RMS Beauty",
-      "DOPAMY", "ドパミー"
+      "DOPAMY", "ドパミー",
+      "MISSHA", "CLIO", "NARS", "BANILA", "COSRX", "dasique", "hince", "HERA", "LANEIGE", "TAMBURINS", "VDL", "3CE", "Biodance", "UNOVE", "Vaseline",
+      "rom&nd", "ロムアンド",
+      "Anua", "アヌア",
+      "medicube", "メディキューブ",
+      "MEDIHEAL", "メディヒール",
+      "AESTURA", "エストラ",
+      "APRILSKIN", "エイプリルスキン"
     ],
     "character_copyright": [
       { "keyword": "ポケモン", "notWith": ["トップローダー", "マグネットローダー", "ローダースタンド", "プラスチックケース"] }, "ポケットモンスター", "Pokemon", "POKÉMON", "pokémon",
@@ -162,6 +173,21 @@
       "SEVENTEEN",
       "NCT",
       "TWICE",
+      "ATEEZ",
+      "aespa",
+      { "keyword": "EXO", "notWith": ["EXOSOME", "エクソソーム"] },
+      "TWS",
+      "G-DRAGON",
+      "東方神起", "TVXQ",
+      "Kep1er",
+      "BLACKPINK",
+      "NewJeans",
+      "ENHYPEN",
+      "izna",
+      "ZEROBASEONE",
+      "LE SSERAFIM",
+      "スーパージュニア", "ウニョク", "イェソン",
+      "2PM",
       "SixTONES", "ジャニーズ", "Snow Man",
       "嵐 うちわ", "ARASHI",
       "WBC", "侍ジャパン",
@@ -186,7 +212,6 @@
       { "keyword": "クロム", "withAll": ["クロス"] },
       { "keyword": "クロム", "withAll": ["十字架"] },
       { "keyword": "シリコンモールド", "withAll": ["クロス"] },
-      { "keyword": "喜平", "withAll": ["ウォレットチェーン"] },
       "Mini Zudabag",
       "モンチッチ",
       "中日ドラゴンズ",
@@ -218,7 +243,12 @@
       "朝鮮日報",
       "じゃらじゃらキーホルダー",
       "カードゲーム",
-      "メルティランシア", "メルティワールド"
+      "メルティランシア", "メルティワールド",
+      "プロセカ",
+      "アークナイツ",
+      "モフサンド", "mofusand",
+      "ムーミン", "MOOMIN", "Moomin",
+      "ストレンジャー・シングス", "ストレンジャーシングス"
     ],
     "brand_imitation": [
       "adidas", "アディダス",
@@ -321,7 +351,17 @@
       "Billabong", "ビラボン",
       "ROXY", "ロキシー",
       "SNOOPY", "スヌーピー",
-      "Peanuts"
+      "Peanuts",
+      "璃熊",
+      "Calvin Klein", "CALVIN KLEIN", "カルバンクライン",
+      "Mary’s Chue",
+      "serenaty", "セレナティ",
+      "ヴィアージュ",
+      "ローズマダム",
+      "ドゥペルル",
+      "ギャルママ",
+      "Allfairy",
+      "喜平"
     ],
     "electronics_check": [
       "Bluetooth", "bluetooth", "ブルートゥース",
@@ -336,7 +376,12 @@
       "ヒートガン",
       "ポリッシャー 電動",
       "オートクリッカー",
-      "スマホ連打"
+      "スマホ連打",
+      "LEDバルブ", "LEDフォグ",
+      "急速充電器",
+      "シガーソケット",
+      "電気毛布",
+      "ワークライト"
     ],
     "medical": [
       "矯正器具", "歯列矯正",
@@ -358,6 +403,17 @@
       "ぬい服", "ぬいぐるみ服", "ぬい 服",
       "着ぐるみ オーダー",
       "手描きイラスト"
+    ],
+    "underwear": [
+      "ボクサーパンツ",
+      "サニタリーショーツ",
+      "ガードル",
+      "ヌーブラ",
+      "ナイトブラ",
+      "ブラジャー",
+      "Tバック",
+      { "keyword": "ショーツ", "notWith": ["WAIPER"] },
+      { "keyword": "下着", "notWith": ["下着収納"] }
     ],
     "private_transaction": [
       { "keyword": "様", "withAll": ["専用"] },

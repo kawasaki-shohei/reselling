@@ -11,14 +11,14 @@
  *      - filename パラメータは指定しない（スクリプト内でファイル保存先を生成する）
  *
  * 出力:
- *   research/YYYY_MM_DD_HHMMSS_mercari_14day_results.json
+ *   research/YYYY_MM_DD_HH_MM__mercari_14day_results.json
  *
  * 仕様準拠:
  *   - procedures/mercari-research.md の全ルールに従う
  *   - ページ数上限なし（自然終了条件のみ）
  *   - ページ内 break 禁止（全件走査）
  *   - item.id でユニーク化
- *   - categoryId・sellerId・thumbnail を保存
+ *   - categoryId・sellerId・thumbnail・itemSize を保存 (itemSize は出品者が設定していれば {id, name})
  */
 async () => {
   // === DPoP JWT 生成 ===
@@ -86,7 +86,7 @@ async () => {
           itemTypes: ['ITEM_TYPE_MERCARI'], skuIds: [], shopIds: [], excludeShippingMethodIds: []
         },
         serviceFrom: 'suruga',
-        withItemBrand: false, withItemSize: false, withItemPromotions: false,
+        withItemBrand: true, withItemSize: true, withItemPromotions: false,
         withItemSizes: false, withShopname: false, useDynamicAttribute: false,
         withSuggestedItems: false, withOfferPricePromotion: false,
         withProductSuggest: false, withParentProducts: false,
@@ -112,20 +112,30 @@ async () => {
       let hitBoundary = false;
       for (const item of items) {
         const ts = parseInt(item.updated || 0);
-        if (ts >= BOUNDARY_TS) {
-          allItems.push({
-            id: item.id,
-            name: item.name,
-            price: parseInt(item.price || 0),
-            updated: ts,
-            url: `https://jp.mercari.com/item/${item.id}`,
-            categoryId: item.categoryId || '',
-            sellerId: item.sellerId || '',
-            thumbnail: (item.thumbnails || [])[0] || ''
-          });
-        } else {
+        if (ts < BOUNDARY_TS) {
           hitBoundary = true; // breakしない。全件走査を続ける
+          continue;
         }
+        // itemBrand が設定されている商品は出品者が Mercari のブランドマスタ
+        // (procedures/exclude_by_keywords/brand_master/brands.jsonl、52,579 件)
+        // から選択した正規ブランド・版権・総称ブランド品のため、中国輸入物販の
+        // 仕入れ候補にならない想定で収集段階から除外する。
+        // 唯一の例外候補が id=40540 'no brand' (出品者がノーブランドを明示) で、
+        // ここには仕入れ候補になり得る商品 (バンダナ/犬服/トレーニング器具等) が
+        // 混じるが、母集団 8,059 件中わずか 6 件 (0.067%) かつ大半は既存辞書
+        // (brand_imitation / food) で捕獲できるため一律除外としている。
+        if (item.itemBrand) continue;
+        allItems.push({
+          id: item.id,
+          name: item.name,
+          price: parseInt(item.price || 0),
+          updated: ts,
+          url: `https://jp.mercari.com/item/${item.id}`,
+          categoryId: item.categoryId || '',
+          sellerId: item.sellerId || '',
+          thumbnail: (item.thumbnails || [])[0] || '',
+          itemSize: item.itemSize || null
+        });
       }
 
       // 自然終了条件のみ（ページ数上限は設けない）

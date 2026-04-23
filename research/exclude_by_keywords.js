@@ -5,8 +5,8 @@
 //
 // 例:
 //   node research/exclude_by_keywords.js research/2026_04_16_06_46__mercari_14day_results.json
-//   node research/exclude_by_keywords.js research/xxx.json tmp/2026/04/19/exclusion_final \
-//     --pending tmp/2026/04/19/dict_expansion/keywords_pending.json
+//   node research/exclude_by_keywords.js research/xxx.json research/runs/2026_04_16_06_46/exclusion_final \
+//     --pending research/runs/2026_04_16_06_46/dict_expansion/keywords_pending.json
 //
 // 入力: research/collect.js の出力 JSON (items 配列を含む)
 // 出力:
@@ -19,6 +19,7 @@
 const fs = require('fs');
 const path = require('path');
 const { loadDictionary, aggregateBySellerTitle, annotateRows } = require('./_classifier');
+const { getRunDir } = require('./_run_paths');
 
 // 引数処理: <input_raw_json> [output_dir] [--pending <keywords_pending.json>]
 const argv = process.argv.slice(2);
@@ -41,18 +42,8 @@ const INPUT = argInput;
 
 const dict = loadDictionary(PENDING_PATH);
 
-// 出力先: positional[1] or 入力ファイルと同階層の exclusion_YYYYMMDD/
-let OUT_DIR;
-if (positional[1]) {
-  OUT_DIR = positional[1];
-} else {
-  const inputDir = path.dirname(INPUT);
-  const now = new Date();
-  const jstOffset = 9 * 60 * 60 * 1000;
-  const jst = new Date(now.getTime() + jstOffset);
-  const ymd = jst.toISOString().slice(0, 10).replace(/-/g, '');
-  OUT_DIR = path.join(inputDir, `exclusion_${ymd}`);
-}
+// 出力先: positional[1] があればそれを使用、なければ research/runs/<ts>/exclusion_final/
+const OUT_DIR = positional[1] || getRunDir(INPUT, 'exclusion_final');
 fs.mkdirSync(OUT_DIR, { recursive: true });
 
 const OUT_JSON = path.join(OUT_DIR, 'exclusion_output.json');

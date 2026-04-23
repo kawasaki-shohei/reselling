@@ -5,24 +5,24 @@
 //   2. unflagged 行 (exclusion === null) を抽出
 //   3. 以下を出力:
 //        - unflagged_titles.json        (候補タイトル)
-//        - opus_prompt.md               (絶対パス置換済みのサブエージェント用プロンプト)
-//        - keywords_pending.json.spec   (Opus が書き出すべき JSON のフォーマット仕様)
+//        - dict_expansion_prompt.md     (絶対パス置換済みのサブエージェント用プロンプト)
 //
-// Opus サブエージェントを起動して暫定辞書を生成する部分は、本スクリプトの範囲外。
-// 生成された opus_prompt.md の内容を Claude Code の Agent ツール (model=opus) に渡す。
+// Sonnet サブエージェントを起動して暫定辞書を生成する部分は、本スクリプトの範囲外。
+// 生成された dict_expansion_prompt.md の内容を Claude Code の Agent ツール (model=sonnet) に渡す。
 //
 // 使い方:
 //   node research/expand_dictionary.js <input_raw_json> [output_dir]
 //
 // 例:
 //   node research/expand_dictionary.js research/2026_04_16_06_46__mercari_14day_results.json
-//   node research/expand_dictionary.js research/xxx.json tmp/2026/04/19/dict_expansion
+//   node research/expand_dictionary.js research/xxx.json research/runs/2026_04_16_06_46/dict_expansion
 //
-// 省略時の出力先: tmp/YYYY/MM/DD/dict_expansion/ (作業日 JST)
+// 省略時の出力先: research/runs/<ts>/dict_expansion/ (<ts> は生データファイル名から抽出)
 
 const fs = require('fs');
 const path = require('path');
 const { loadDictionary, aggregateBySellerTitle, annotateRows } = require('./_classifier');
+const { getRunDir } = require('./_run_paths');
 
 const argInput = process.argv[2];
 if (!argInput) {
@@ -30,17 +30,7 @@ if (!argInput) {
   process.exit(1);
 }
 
-let OUT_DIR;
-if (process.argv[3]) {
-  OUT_DIR = process.argv[3];
-} else {
-  const now = new Date();
-  const jst = new Date(now.getTime() + 9 * 60 * 60 * 1000);
-  const y = jst.getUTCFullYear();
-  const m = String(jst.getUTCMonth() + 1).padStart(2, '0');
-  const day = String(jst.getUTCDate()).padStart(2, '0');
-  OUT_DIR = path.join('tmp', String(y), m, day, 'dict_expansion');
-}
+const OUT_DIR = process.argv[3] || getRunDir(argInput, 'dict_expansion');
 fs.mkdirSync(OUT_DIR, { recursive: true });
 
 // 正規辞書のみで一次除外 (--pending は使わない)
@@ -58,7 +48,7 @@ const unflagged = rows.filter(r => r.exclusion === null).map(r => ({
 const UNFLAGGED_PATH = path.resolve(OUT_DIR, 'unflagged_titles.json');
 fs.writeFileSync(UNFLAGGED_PATH, JSON.stringify(unflagged, null, 2));
 
-// Opus プロンプト (絶対パス置換済み)
+// Agent プロンプト (絶対パス置換済み)
 const PROJECT_ROOT = path.resolve(__dirname, '..');
 const ABS = (p) => path.join(PROJECT_ROOT, p);
 const PENDING_PATH = path.resolve(OUT_DIR, 'keywords_pending.json');
@@ -113,7 +103,7 @@ ${PENDING_PATH} に書き出してください。
 \`keywords_pending.json\` を書き出した後、自分で Read してフォーマットが正しいことを確認してから終了する。
 `;
 
-const PROMPT_PATH = path.resolve(OUT_DIR, 'opus_prompt.md');
+const PROMPT_PATH = path.resolve(OUT_DIR, 'dict_expansion_prompt.md');
 fs.writeFileSync(PROMPT_PATH, prompt);
 
 console.log(JSON.stringify({
@@ -122,8 +112,8 @@ console.log(JSON.stringify({
   unflagged_count: unflagged.length,
   files: {
     unflagged_titles: UNFLAGGED_PATH,
-    opus_prompt: PROMPT_PATH,
+    agent_prompt: PROMPT_PATH,
     expected_keywords_pending: PENDING_PATH,
   },
-  next_step: 'Agent ツール (subagent_type=general-purpose, model=opus) を起動し、opus_prompt.md の内容を prompt 引数に渡す',
+  next_step: 'Agent ツール (subagent_type=general-purpose, model=sonnet) を起動し、dict_expansion_prompt.md の内容を prompt 引数に渡す',
 }, null, 2));

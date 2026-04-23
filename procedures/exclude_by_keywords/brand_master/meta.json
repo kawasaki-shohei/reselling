@@ -1,0 +1,17 @@
+{
+  "source": "https://api.mercari.jp/master/v2/datasets/item_brands",
+  "indexedDB_location": "master.itemBrands",
+  "fetched_at": "2026-04-21T09:20:12.271623+09:00",
+  "etag_at_fetch": "603",
+  "brand_count": 52579,
+  "id_min": 1,
+  "id_max": 57961,
+  "schema_keys": [
+    "id",
+    "name",
+    "subname",
+    "initial",
+    "jaPronunciation",
+    "nameJaFurigana"
+  ]
+}
