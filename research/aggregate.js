@@ -22,6 +22,7 @@
 const fs = require('fs');
 const path = require('path');
 const { extractTimestamp, getRunDir } = require('./_run_paths');
+const { writeFileSafe } = require('./_safe_write');
 
 const argInput = process.argv[2];
 if (!argInput) {
@@ -68,7 +69,7 @@ if (!outPath) {
 }
 
 fs.mkdirSync(path.dirname(outPath), { recursive: true });
-fs.writeFileSync(outPath, lines.join('\n'));
+writeFileSafe(outPath, lines.join('\n'));
 
 console.log(JSON.stringify({
   input: argInput,

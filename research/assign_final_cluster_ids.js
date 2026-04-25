@@ -22,6 +22,7 @@
 
 const fs = require("node:fs");
 const path = require("node:path");
+const { writeFileSafe } = require("./_safe_write");
 
 const PURCHASE_THRESHOLD = 3;
 
@@ -199,7 +200,7 @@ function main() {
   const summary = summarize(finalClusters);
 
   const outPath = path.join(idDir, "final_clusters.json");
-  fs.writeFileSync(
+  writeFileSafe(
     outPath,
     JSON.stringify({ summary, clusters: finalClusters }, null, 2) + "\n",
     "utf8",

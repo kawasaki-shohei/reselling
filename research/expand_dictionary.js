@@ -23,6 +23,7 @@ const fs = require('fs');
 const path = require('path');
 const { loadDictionary, aggregateBySellerTitle, annotateRows } = require('./_classifier');
 const { getRunDir } = require('./_run_paths');
+const { writeFileSafe } = require('./_safe_write');
 
 const argInput = process.argv[2];
 if (!argInput) {
@@ -46,7 +47,7 @@ const unflagged = rows.filter(r => r.exclusion === null).map(r => ({
 }));
 
 const UNFLAGGED_PATH = path.resolve(OUT_DIR, 'unflagged_titles.json');
-fs.writeFileSync(UNFLAGGED_PATH, JSON.stringify(unflagged, null, 2));
+writeFileSafe(UNFLAGGED_PATH, JSON.stringify(unflagged, null, 2));
 
 // Agent プロンプト (絶対パス置換済み)
 const PROJECT_ROOT = path.resolve(__dirname, '..');
@@ -104,7 +105,7 @@ ${PENDING_PATH} に書き出してください。
 `;
 
 const PROMPT_PATH = path.resolve(OUT_DIR, 'dict_expansion_prompt.md');
-fs.writeFileSync(PROMPT_PATH, prompt);
+writeFileSafe(PROMPT_PATH, prompt);
 
 console.log(JSON.stringify({
   input: argInput,

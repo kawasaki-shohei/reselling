@@ -31,6 +31,7 @@
 
 const fs = require("node:fs");
 const path = require("node:path");
+const { writeFileSafe } = require("./_safe_write");
 
 const CLUSTER_AXES = [
   "category",
@@ -136,7 +137,7 @@ function main() {
   const outDir = path.join(runDir, "identity_resolution");
   fs.mkdirSync(outDir, { recursive: true });
   const outPath = path.join(outDir, "clusters.json");
-  fs.writeFileSync(
+  writeFileSafe(
     outPath,
     JSON.stringify({ summary, groups }, null, 2) + "\n",
     "utf8",

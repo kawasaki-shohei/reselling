@@ -23,6 +23,7 @@
 
 const fs = require('fs');
 const path = require('path');
+const { writeFileSafe } = require('./_safe_write');
 
 // === 引数チェック ===
 const inputPath = process.argv[2];
@@ -155,7 +156,7 @@ const outputDir = path.dirname(inputPath);
 
 // 全クラスター（デバッグ用）
 const clustersPath = path.join(outputDir, `${prefix}_clusters.json`);
-fs.writeFileSync(clustersPath, JSON.stringify({
+writeFileSafe(clustersPath, JSON.stringify({
   totalItems: items.length,
   totalClusters: Object.keys(clusters).length,
   hotClusters: hotClusters.length,
@@ -168,7 +169,7 @@ fs.writeFileSync(clustersPath, JSON.stringify({
 
 // 候補（Claude の第3段階入力用）
 const candidatesPath = path.join(outputDir, `${prefix}_candidates.json`);
-fs.writeFileSync(candidatesPath, JSON.stringify({
+writeFileSafe(candidatesPath, JSON.stringify({
   inputFile: inputPath,
   totalItems: items.length,
   totalCandidates: finalCandidates.length,

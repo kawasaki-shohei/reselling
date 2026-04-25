@@ -23,6 +23,7 @@
 
 const fs = require("node:fs");
 const path = require("node:path");
+const { writeFileSafe } = require("./_safe_write");
 
 function parseChunkNum(arg) {
   const n = Number(arg);
@@ -89,7 +90,7 @@ function countApplications(rows, proposals) {
 
 function writeJsonFile(outputPath, data) {
   fs.mkdirSync(path.dirname(outputPath), { recursive: true });
-  fs.writeFileSync(outputPath, JSON.stringify(data, null, 2) + "\n", "utf8");
+  writeFileSafe(outputPath, JSON.stringify(data, null, 2) + "\n", "utf8");
 }
 
 function main() {

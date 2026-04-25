@@ -24,6 +24,7 @@
 
 const fs = require("node:fs");
 const path = require("node:path");
+const { writeFileSafe } = require("./_safe_write");
 
 const PROMPT_BASE_PATH = path.resolve(
   path.join(__dirname, "visual_extraction_prompt.md"),
@@ -145,7 +146,7 @@ function main() {
   const combined = `${base.trimEnd()}\n\n---\n\n${vocabSection}\n---\n\n${tail}`;
 
   fs.mkdirSync(outDir, { recursive: true });
-  fs.writeFileSync(outPath, combined, "utf8");
+  writeFileSafe(outPath, combined, "utf8");
 
   console.log(
     JSON.stringify(

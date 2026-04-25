@@ -41,6 +41,7 @@
 
 const fs = require("node:fs");
 const path = require("node:path");
+const { writeFileSafe } = require("./_safe_write");
 
 function parseArgs() {
   const [, , structuredPath, imagesDir, runDir, batchSizeArg] = process.argv;
@@ -92,7 +93,7 @@ function buildBatches({ structuredPath, imagesDir, runDir, batchSize }) {
     const nnn = String(batchNum).padStart(3, "0");
     const batchItems = items.slice(i, i + batchSize);
     const outPath = path.join(outDir, `batch_${nnn}.json`);
-    fs.writeFileSync(
+    writeFileSafe(
       outPath,
       JSON.stringify({ batchNum, items: batchItems }, null, 2) + "\n",
       "utf8",

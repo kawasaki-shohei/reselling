@@ -20,6 +20,7 @@
 
 const fs = require("node:fs");
 const path = require("node:path");
+const { writeFileSafe } = require("./_safe_write");
 
 const DEFAULT_CHUNK_SIZE = 150;
 const TSV_HEADER = "rowIndex\tid\tname";
@@ -88,7 +89,7 @@ function writeChunkFiles(outputDir, chunks) {
   const outputPaths = [];
   for (let i = 0; i < chunks.length; i++) {
     const outPath = path.join(outputDir, chunkFileName(i));
-    fs.writeFileSync(outPath, formatTsv(chunks[i]), "utf8");
+    writeFileSafe(outPath, formatTsv(chunks[i]), "utf8");
     outputPaths.push(outPath);
   }
   return outputPaths;

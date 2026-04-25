@@ -16,6 +16,7 @@
 
 const fs = require('fs');
 const path = require('path');
+const { writeFileSafe } = require('./_safe_write');
 
 const VERDICT_KEYS = ['keep', 'exclude', 'unclear'];
 const PASS_VERDICTS = new Set(['keep', 'unclear']);
@@ -118,8 +119,8 @@ function main() {
 
   const judgmentsPath = path.join(RUN_DIR, 'judgments.json');
   const filteredPath = path.join(RUN_DIR, 'filtered_unflagged.json');
-  fs.writeFileSync(judgmentsPath, JSON.stringify(judgments, null, 2));
-  fs.writeFileSync(filteredPath, JSON.stringify(filtered, null, 2));
+  writeFileSafe(judgmentsPath, JSON.stringify(judgments, null, 2));
+  writeFileSafe(filteredPath, JSON.stringify(filtered, null, 2));
 
   console.log(
     JSON.stringify(

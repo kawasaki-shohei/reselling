@@ -20,6 +20,7 @@ const fs = require('fs');
 const path = require('path');
 const { loadDictionary, aggregateBySellerTitle, annotateRows } = require('./_classifier');
 const { getRunDir } = require('./_run_paths');
+const { writeFileSafe } = require('./_safe_write');
 
 // 引数処理: <input_raw_json> [output_dir] [--pending <keywords_pending.json>]
 const argv = process.argv.slice(2);
@@ -83,7 +84,7 @@ const out = {
   rows,
 };
 
-fs.writeFileSync(OUT_JSON, JSON.stringify(out, null, 2));
+writeFileSafe(OUT_JSON, JSON.stringify(out, null, 2));
 
 let md = `# キーワード除外 (keyword_exclusion_step) 統計サマリー\n\n`;
 md += `- 入力: \`${INPUT}\`\n`;
@@ -106,7 +107,7 @@ md += `- primary 決定の優先度順: ${dict.priority.join(' > ')}\n`;
 md += `- 複数カテゴリに該当した行は matches に全マッチを保持\n`;
 md += `- 辞書改善と精度確認の運用は \`docs/research/mercari/exclude_by_keywords_precision_check.md\` を参照\n`;
 
-fs.writeFileSync(OUT_STATS, md);
+writeFileSafe(OUT_STATS, md);
 
 console.log(JSON.stringify(stats, null, 2));
 console.log(`\nsaved: ${OUT_JSON}`);

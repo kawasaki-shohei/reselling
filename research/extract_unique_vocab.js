@@ -20,6 +20,7 @@
 
 const fs = require("node:fs");
 const path = require("node:path");
+const { writeFileSafe } = require("./_safe_write");
 
 const TARGET_FIELDS = ["category", "subcategory", "color"];
 const CHUNK_FILE_PATTERN = /^normalized_chunk_.+\.json$/;
@@ -95,7 +96,7 @@ function buildVocab(rows) {
 function writeJsonFile(outputPath, data) {
   const outputDir = path.dirname(outputPath);
   fs.mkdirSync(outputDir, { recursive: true });
-  fs.writeFileSync(outputPath, JSON.stringify(data, null, 2) + "\n", "utf8");
+  writeFileSafe(outputPath, JSON.stringify(data, null, 2) + "\n", "utf8");
 }
 
 function main() {

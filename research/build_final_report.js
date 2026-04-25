@@ -7,7 +7,7 @@
  * CSV に書き出す。
  *
  * 使い方:
- *   node research/build_final_report.js <run-dir> <raw-data-path>
+ *   node research/build_final_report.js <run-dir> <raw-data-path> [final-clusters-path]
  *
  * 例:
  *   node research/build_final_report.js \
@@ -16,7 +16,13 @@
  *
  * 入力:
  *   <run-dir>/identity_resolution/final_clusters.json (第 6 段階 6-3 の出力)
+ *     第 3 引数で別パス (例: final_clusters_alt.json) を明示指定可能
  *   <raw-data-path>                                    (第 1 段階の生データ、価格と URL を引く)
+ *
+ * 価格と URL の引き方:
+ *   cluster.items[i].id で raw.items を検索する (id → item の Map を事前構築)。
+ *   rowIndex は aggregate TSV の行番号であり raw.items の添字ではないため、
+ *   添字として使うと別商品を指してしまう (過去に発生したバグへの対処)。
  *
  * 出力:
  *   reports/YYYY/MM/YYYY_MM_DD_NN_メルカリ売れ筋リサーチ_v2.csv
@@ -40,6 +46,7 @@
 
 const fs = require("node:fs");
 const path = require("node:path");
+const { writeFileSafe } = require("./_safe_write");
 
 const COLUMNS = [
   "cluster_id",
@@ -63,16 +70,17 @@ const REPORTS_ROOT = "reports";
 const FILE_NAME_SUFFIX = "メルカリ売れ筋リサーチ_v2";
 
 function parseArgs() {
-  const [, , runDirArg, rawPathArg] = process.argv;
+  const [, , runDirArg, rawPathArg, finalClustersArg] = process.argv;
   if (!runDirArg || !rawPathArg) {
     console.error(
-      "Usage: node research/build_final_report.js <run-dir> <raw-data-path>",
+      "Usage: node research/build_final_report.js <run-dir> <raw-data-path> [final-clusters-path]",
     );
     process.exit(1);
   }
   return {
     runDir: runDirArg.replace(/\/$/, ""),
     rawPath: rawPathArg,
+    finalClustersPath: finalClustersArg ?? null,
   };
 }
 
@@ -126,17 +134,17 @@ function quoteCsvField(value) {
   return s;
 }
 
-function computePriceRange(items, rawItems) {
+function computePriceRange(items, rawById) {
   const prices = [];
   for (const it of items) {
-    const raw = rawItems[it.rowIndex];
+    const raw = rawById.get(it.id);
     if (raw != null && typeof raw.price === "number") prices.push(raw.price);
   }
   if (prices.length === 0) return { min: null, max: null };
   return { min: Math.min(...prices), max: Math.max(...prices) };
 }
 
-function pickUrls(items, rawItems) {
+function pickUrls(items, rawById) {
   const urls = [];
   for (let i = 0; i < 3; i++) {
     const it = items[i];
@@ -144,16 +152,16 @@ function pickUrls(items, rawItems) {
       urls.push(null);
       continue;
     }
-    const raw = rawItems[it.rowIndex];
+    const raw = rawById.get(it.id);
     urls.push(raw != null && raw.url ? raw.url : null);
   }
   return urls;
 }
 
-function buildRow(cluster, rawItems) {
+function buildRow(cluster, rawById) {
   const attrs = cluster.representative_attributes ?? {};
-  const { min, max } = computePriceRange(cluster.items, rawItems);
-  const [url1, url2, url3] = pickUrls(cluster.items, rawItems);
+  const { min, max } = computePriceRange(cluster.items, rawById);
+  const [url1, url2, url3] = pickUrls(cluster.items, rawById);
   return {
     cluster_id: cluster.cluster_id,
     count: cluster.size,
@@ -178,13 +186,11 @@ function toCsvLine(values) {
 }
 
 function main() {
-  const { runDir, rawPath } = parseArgs();
+  const { runDir, rawPath, finalClustersPath: explicitPath } = parseArgs();
 
-  const finalClustersPath = path.join(
-    runDir,
-    "identity_resolution",
-    "final_clusters.json",
-  );
+  const finalClustersPath =
+    explicitPath ??
+    path.join(runDir, "identity_resolution", "final_clusters.json");
   if (!fs.existsSync(finalClustersPath)) {
     throw new Error(`final_clusters.json does not exist: ${finalClustersPath}`);
   }
@@ -203,25 +209,23 @@ function main() {
   if (!Array.isArray(rawItems)) {
     throw new Error(`raw data does not have items array: ${rawPath}`);
   }
+  const rawById = new Map(
+    rawItems.filter((x) => x && typeof x.id === "string").map((it) => [it.id, it]),
+  );
 
   const targets = clusters.filter((c) => c.is_purchase_candidate === true);
 
   const { outDir, outPath } = buildOutputPath();
-  if (fs.existsSync(outPath)) {
-    throw new Error(
-      `output file already exists (共通原則 1: 不変): ${outPath}`,
-    );
-  }
   fs.mkdirSync(outDir, { recursive: true });
 
   const lines = [toCsvLine(COLUMNS)];
   for (const cluster of targets) {
-    const row = buildRow(cluster, rawItems);
+    const row = buildRow(cluster, rawById);
     lines.push(toCsvLine(COLUMNS.map((k) => row[k])));
   }
   const csv = lines.join("\n") + "\n";
 
-  fs.writeFileSync(outPath, csv, "utf8");
+  writeFileSafe(outPath, csv, "utf8");
 
   console.log(
     JSON.stringify(

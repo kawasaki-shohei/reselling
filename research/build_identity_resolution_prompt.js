@@ -26,6 +26,7 @@
 
 const fs = require("node:fs");
 const path = require("node:path");
+const { writeFileSafe } = require("./_safe_write");
 
 const PROMPT_BASE_PATH = path.resolve(
   path.join(__dirname, "identity_resolution_prompt.md"),
@@ -146,7 +147,7 @@ function main() {
       subInfo: null,
       imagesDir,
     });
-    fs.writeFileSync(outPath, `${base.trimEnd()}\n\n---\n\n${tail}`, "utf8");
+    writeFileSafe(outPath, `${base.trimEnd()}\n\n---\n\n${tail}`, "utf8");
     outputs.push({
       groupId,
       subIdx: null,
@@ -180,7 +181,7 @@ function main() {
         subInfo: { subIdx: i + 1, subTotal },
         imagesDir,
       });
-      fs.writeFileSync(outPath, `${base.trimEnd()}\n\n---\n\n${tail}`, "utf8");
+      writeFileSafe(outPath, `${base.trimEnd()}\n\n---\n\n${tail}`, "utf8");
       outputs.push({
         groupId,
         subIdx: i + 1,

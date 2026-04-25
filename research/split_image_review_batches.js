@@ -10,6 +10,7 @@
 
 const fs = require('fs');
 const path = require('path');
+const { writeFileSafe } = require('./_safe_write');
 
 function splitItemsIntoBatches(items, batchSize) {
   const batches = [];
@@ -50,7 +51,7 @@ function main() {
   const batches = splitItemsIntoBatches(items, BATCH_SIZE);
   for (let i = 0; i < batches.length; i++) {
     const slice = batches[i];
-    fs.writeFileSync(
+    writeFileSafe(
       path.join(batchesDir, batchFileName(i)),
       JSON.stringify({ batch_id: i, items: slice }, null, 2),
     );

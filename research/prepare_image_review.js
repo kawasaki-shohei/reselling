@@ -17,6 +17,7 @@
 const fs = require('fs');
 const path = require('path');
 const { extractTimestamp, getRunDir } = require('./_run_paths');
+const { writeFileSafe } = require('./_safe_write');
 
 function buildAllItems({ exclusionRows, rawItems, imagesDir }) {
   const thumbMap = new Map(rawItems.map((it) => [it.id, it.thumbnail]));
@@ -85,7 +86,7 @@ function main() {
   };
 
   const outPath = path.join(OUT_DIR, 'all.json');
-  fs.writeFileSync(outPath, JSON.stringify(out, null, 2));
+  writeFileSafe(outPath, JSON.stringify(out, null, 2));
   console.log(JSON.stringify({ ...out.meta, output: outPath }, null, 2));
 }
 

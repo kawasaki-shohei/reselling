@@ -27,6 +27,7 @@
 
 const fs = require("node:fs");
 const path = require("node:path");
+const { writeFileSafe } = require("./_safe_write");
 
 const PROMPT_BASE_PATH = "research/structured_extraction_prompt.md";
 const TARGET_FIELDS = ["category", "subcategory", "color"];
@@ -103,7 +104,7 @@ function main() {
   const finalPrompt = buildPrompt(promptBase, vocab);
 
   fs.mkdirSync(path.dirname(outputPath), { recursive: true });
-  fs.writeFileSync(outputPath, finalPrompt, "utf8");
+  writeFileSafe(outputPath, finalPrompt, "utf8");
 
   const summary = {
     chunkNum,

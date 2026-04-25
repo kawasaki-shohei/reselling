@@ -26,6 +26,7 @@
 
 const fs = require("node:fs");
 const path = require("node:path");
+const { writeFileSafe } = require("./_safe_write");
 
 const { buildVocab } = require("./extract_unique_vocab.js");
 
@@ -181,12 +182,12 @@ function main() {
   const vocab = buildVocab(allRows);
 
   fs.mkdirSync(normDir, { recursive: true });
-  fs.writeFileSync(
+  writeFileSafe(
     vocabDebugPath,
     JSON.stringify(vocab, null, 2) + "\n",
     "utf8",
   );
-  fs.writeFileSync(
+  writeFileSafe(
     promptPath,
     buildPrompt({ outputAbsPath: proposedAbsPath, chunkStr, vocab }),
     "utf8",
