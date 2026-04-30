@@ -70,29 +70,44 @@ https://jp.mercari.com/search?keyword=インポート&status=sold_out|trading&it
 
 ### 出力フォーマット
 
-- Markdown
+- **CSV** (UTF-8 BOM 付き)
 - ディレクトリ: `reports/YYYY/MM/`
-- ファイル名: `YYYY_MM_DD_NN_メルカリ売れ筋リサーチ.md`（`NN` は同日内の連番）
-- 必ず商品の詳細ページのURLを記載する
+- ファイル名: `YYYY_MM_DD_NN_メルカリ売れ筋リサーチ_<verdict>.csv`
+  - `<verdict>` は第3段階 PDF 突合の判定。`keep` (該当なし、仕入れ可) と `unclear` (要目視確認) で**ファイルを分ける**
+  - `NN` は同日内の連番
+  - 例: `reports/2026/04/2026_04_28_01_メルカリ売れ筋リサーチ_keep.csv`、`reports/2026/04/2026_04_28_02_メルカリ売れ筋リサーチ_unclear.csv`
 
-**フォーマット**: 既存のレポート（例: `reports/2026/04/2026_04_12_04_メルカリ売れ筋リサーチ_14日ウィンドウ方式.md`）を参考にする。最低限、以下を含める。
+**列定義 (ヘッダ行)**:
 
-- **ヘッダ**: 実行日時・手法
-- **実行サマリー**: 14日境界・総APIリクエスト数・ユニーク化後件数・クラスター数
-- **仕入れ候補リスト**: 各候補について以下を必ず記載
-  - 代表タイトル
-  - SOLD件数（過去14日に売れた件数）
-  - 代表価格帯（¥min〜¥max）
-  - 過去14日に売れた出品者数（`*_candidates.json` の `uniqueSellers`、参考値）
-  - 販売中ライバル数（`*_rivals.json` の `rivalCount`）
-  - 使った検索キーワード（`*_rivals.json` の `rivalQuery`）
-  - 代表商品URL（できるだけ全件・最低3件）
-  - 除外PDF突合結果（なぜ仕入れ可と判断したか）
-  - 備考（仕入れ判断材料・Rakumartでの探し方など）
-- **除外したクラスター**: 末尾に以下を3セクションで記録
-  - 「過去14日売れた出品者数で除外したクラスター」（`*_candidates.json` の `excluded: true` / `exclusionReason: "sellers_10_or_more"`。`analyze.js` が SOLD 商品の出品者数で判定した参考フラグ）
-  - 「禁止商品チェックで除外したクラスター」（第3段階で除外したもの・除外理由付き）
-  - 「販売中ライバル10人以上で除外したクラスター」（第4段階で `*_rivals.json` の `rivalExcluded: true` になったもの・`rivalCount` 付き）
+```
+番号,代表タイトル,SOLD件数,最低価格,最高価格,価格警告,過去14日売れた出品者数,代表URL1,代表URL2,代表URL3,代表URL4,代表URL5,総URL件数,備考
+```
+
+| 列 | 出所 | 内容 |
+|---|---|---|
+| 番号 | 連番 | ファイル内の通し番号 (1 始まり) |
+| 代表タイトル | `*_candidates.json` の `representativeTitle` | クラスター代表 (1 件目のアイテム名) |
+| SOLD件数 | `count` | 過去 14 日に売れた件数 (クラスター内のアイテム数) |
+| 最低価格 / 最高価格 | `minPrice` / `maxPrice` | 価格帯 |
+| 価格警告 | `priceWarning` | 価格幅が 2 倍超なら `⚠️`、そうでなければ空欄 |
+| 過去14日売れた出品者数 | `uniqueSellers` | ユニーク出品者数 (参考値) |
+| 代表URL1〜5 | `items[0..4].url` | 代表商品の URL 最大 5 件 (足りない分は空欄) |
+| 総URL件数 | `items.length` | クラスター内の全 URL 件数 |
+| 備考 | 第3段階 PDF 突合の `reason` | 「ブランド模造 (Maison Margiela)」等の判定理由 (50 文字程度) |
+
+**verdict 別ファイル分割の意図**:
+
+- `keep`: 仕入れ判断者がそのまま検討できる「禁止商品ではない」候補
+- `unclear`: タイトルだけでは判定しきれず、画像目視等で再判定が必要な候補
+- `exclude` (禁止商品確定): CSV には**載せない**。判定結果は `pdf_check/all_judgments.json` に残る
+
+**除外したクラスターの記録**: CSV には掲載しないが、トレーサビリティのため判定根拠は以下のファイルに残る。
+
+- 過去 14 日売れた出品者数で除外: `*_candidates.json` の `excluded: true` / `exclusionReason: "sellers_10_or_more"` (`analyze.js` が判定)
+- 禁止商品 (PDF 突合) で除外: `research/runs/<RUN_ID>/pdf_check/all_judgments.json` の `verdict: "exclude"` 行 (Sonnet Agent が判定、`category` A〜O・`reason` 付き)
+- 販売中ライバル 10 人以上で除外: `*_rivals.json` の `rivalExcluded: true` (第4段階を実施した場合のみ)
+
+**実装メモ**: CSV は BOM (`﻿`) を先頭に付与する。Excel で開いた際に日本語が文字化けしないようにするため。
 
 ---
 
@@ -143,6 +158,7 @@ research/rival_count.js  ← 販売中ライバル数カウント（browser_eval
 1. `browser_navigate` で `https://jp.mercari.com` の任意のページを開いて3秒待つ
     - 未ログインでよい。`collect.js` および `rival_count.js` が DPoP 認証キーを IndexedDB から取得するため、ブラウザで Mercari のセッションを確立しておく必要がある
 2. `research/collect.js` の内容を読み取り、`browser_evaluate` の `function` パラメータにそのまま渡して実行する
+    - **⚠️ レート制限のため 1 キーワードずつ呼び出すこと** (2026-04-28 実測): `KEYWORDS` 配列全件を `Promise.all` で一括並列実行すると Mercari API の 4xx/5xx で `resp.ok=false` になり各検索が早期終了し、取得件数が大幅に減る (単独「インポート」9,824 件 → 全 11 キーワード一括では同キーワードで 1,039 件)。`browser_evaluate` 1 回につき 1 キーワード (5 価格帯並列) ずつ実行し、全キーワード分を順次呼び出して結果をマージする
 3. 戻り値の `_filename` フィールドの値を使い、`research/` ディレクトリに JSON として保存する
 4. `node research/analyze.js research/<保存したファイル名>` を実行する
 5. 第3段階（禁止商品チェック・PDF突合）を実施する（下記「第3段階: 禁止商品チェック（PDF突合）」参照）

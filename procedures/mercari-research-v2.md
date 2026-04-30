@@ -5,9 +5,9 @@
 本ドキュメントは [`overview.md`](../overview.md) の工程 **(1) 商品リサーチ** の手順書である。
 
 メルカリで中国輸入製品を調査し、以下の 2 条件を満たす商品を **仕入れ候補** として最後に出力する。
-
+  
 - **ブランド模造・その他の除外条件に合致しないもの** (→ 第 4 段階で判定: キーワード除外 + サブステップ画像除外)
-- **14 日間に 3 個以上の販売実績があるもの** (→ 第 2 段階で集約、第 6 段階 6-3 でクラスタ内 3 件以上の場合に `is_purchase_candidate=true` として判定)
+- **14 日間に 3 個以上の販売実績があるもの** (販売実績 = 購入者が決まった件数。メルカリのステータス `sold_out` と `trading` の両方を「売れた」として同列に数える。第 1 段階 collect_step で両者を収集し、第 2 段階で集約、第 6 段階 6-3 でクラスタ内の販売件数合計 (`count_total` = クラスタ内全 row の `ids` 配列要素数の合計) が 3 件以上の場合に `is_purchase_candidate=true` として判定。row 数 (`size`) ではなく `count_total` で判定するのは、1 seller が同一商品を 3 件以上売った場合も拾うため)
 
 ※ **「同商品の販売者数 10 人未満のもの (販売中ライバル数カウント)」はスキップする** (本手順書では扱わない)。
 
@@ -93,12 +93,10 @@ Sonnet / Haiku いずれの Agent を起動する工程 (第 4 段階画像除�
 
 ### 原則 1: 1 Agent あたりの担当数
 
-**Sonnet Agent (5-1 構造化抽出 / 5-3 視覚属性抽出 / 6-2 同一商品判定)**:
+**Sonnet Agent (第 4 段階画像除外 / 5-1 構造化抽出 / 5-3 視覚属性抽出 / 6-2 同一商品判定)**:
 
-- **1 Agent = 3 バッチ (150 件) を標準**
+- **1 Agent あたりの担当件数は工程ごとに異なる**。各工程の個別記述を参照
 - **並列起動禁止** (使用量制限を一気に消費するため)
-- 過去実績: 500 件 / Agent を試して 250 件で停止した事例あり (2026-04-18)。詰め込みは避ける
-- 6-2 の仮クラスタは 50 件以下なら 1 グループ = 1 Agent、50 件超のみサブ分割 (50 件ずつ)
 
 **Haiku Agent (5-2 正規化提案)**:
 
@@ -231,7 +229,7 @@ SendMessage({
      2 件以上の仮クラスタは LLM に画像 + タイトルを見せて subgroup に仕分け
      1 件のみの仮クラスタ (singleton) は LLM 判定を省略して単独クラスタとして確定
 7. 仕入れ候補書き出し (purchase_candidate_export_step)
-     is_purchase_candidate=true のクラスタ (3 件以上) のみを CSV に書き出す
+     is_purchase_candidate=true のクラスタ (count_total >= 3) のみを CSV に書き出す
      出力: reports/YYYY/MM/YYYY_MM_DD_NN_メルカリ売れ筋リサーチ_v2.csv
 ```
 
@@ -246,7 +244,7 @@ SendMessage({
 | 4. キーワード除外 (続) — 画像除外 (verdict=exclude を除外、keep + unclear が残る) | 約 4,800 件 | 要実測 | 要実測 | 要実測 |
 | 5. 構造化抽出 (件数は減らない) | 第 4 段階通過後の行集合 | 同上 | 0% | 同上 |
 | 6. 同一商品判定 (クラスタ単位でまとめる、件数は減らない) | 第 4 段階通過後の行集合 | 同上 | 0% | 同上 |
-| 7. 仕入れ候補書き出し (`is_purchase_candidate=true` のクラスタのみ CSV 書き出し) | 全クラスタ | 3 件以上のクラスタのみ | - | - |
+| 7. 仕入れ候補書き出し (`is_purchase_candidate=true` のクラスタのみ CSV 書き出し) | 全クラスタ | `count_total >= 3` のクラスタのみ | - | - |
 
 第 4 段階 (キーワード除外) の unflagged 件数は辞書改善で変動する。画像除外 (image_exclusion_step) の通過件数は初回実測待ち。第 5・6 段階は件数自体は変わらず、**クラスタ数 (同一商品とみなせるまとまりの数)** が成果指標になる。第 6 段階のクラスタ数と第 7 段階の書き出し件数 (`is_purchase_candidate=true` のクラスタ数) は初回本番実行後に実測して追記する。現時点では想定値を書かない (書くと将来のセッションがそれを事実として扱い、精度改善の前提が歪むため)。
 
@@ -254,9 +252,11 @@ SendMessage({
 
 ## 第 1 段階: 収集 (collect_step)
 
-`research/collect.js` を Playwright MCP の `browser_evaluate` 経由で実行して 14 日 SOLD データを収集する。
+`research/collect.js` を Playwright MCP の `browser_evaluate` 経由で実行し、14 日以内に購入者が決まった商品データを収集する。
 
-- 入口キーワード 10 種 × 価格帯 5 区間 = 50 組み合わせを並列実行
+- **収集対象のステータス**: `STATUS_SOLD_OUT` (取引完了) と `STATUS_TRADING` (取引中、購入者決定済み) の両方。メルカリ UI で SOLD バッジが付く商品すべてに相当する。仕入れ判断者の「SOLD = 売れた」認識と揃える目的 (trading 分のキャンセルノイズは許容)
+- 入口キーワード × 価格帯 5 区間を **1 キーワードずつ** 順次実行 (各キーワード内では 5 価格帯を並列)
+- **⚠️ レート制限のため一括並列禁止** (2026-04-28 実測): 全キーワード × 5 価格帯を `Promise.all` で一括並列実行すると Mercari API の 4xx/5xx で `resp.ok=false` になり各検索が早期終了し、取得件数が大幅に減る (単独「インポート」9,824 件 → 全 11 キーワード一括では同キーワードで 1,039 件)。`browser_evaluate` 1 回につき 1 キーワード (5 価格帯並列) ずつ実行し、全キーワード分を順次呼び出して結果をマージする
 - **ブラウザ準備は本手順書を実行する Claude Code 自身が行う**。`collect.js` を実行する前に Playwright MCP (`browser_navigate`) で `https://jp.mercari.com` を開き、DPoP 認証のためのセッションを確立する (未ログインで可)。**ユーザーに「ブラウザを開いてください」と依頼しない**
 - 出力: `research/YYYY_MM_DD_HH_MM__mercari_14day_results.json` (生データ、約 8,000 items)
 
@@ -591,7 +591,7 @@ node research/exclude_by_keywords.js research/<rawfile>.json research/runs/<ts>/
 
 #### モデル
 
-Sonnet 全件。Agent 運用 (1 Agent = 3 バッチ、並列禁止、バッチ逐次保存、SendMessage 復帰、progress.json による中断再開、Agent 01 直後のスポットチェック) は冒頭「## Agent 運用の共通原則」を踏襲する。元ネタとなった過去検証の詳細は `procedures/exclude_by_keywords_precision_check/README.md` §7 を参照。
+Sonnet 全件。**本工程は 1 Agent = 2 バッチ (100 件)** を担当する。並列禁止、バッチ逐次保存、SendMessage 復帰、progress.json による中断再開、Agent 01 直後のスポットチェックは冒頭「## Agent 運用の共通原則」を踏襲する。元ネタとなった過去検証の詳細は `procedures/exclude_by_keywords_precision_check/README.md` §7 を参照。
 
 #### 実行
 
@@ -631,7 +631,7 @@ EOF
 
 ##### ステップ 5: Sonnet Agent を 1 体ずつ起動
 
-担当割り当て: Agent N (N = 1, 2, ...) は `batch_{3*(N-1):03d}` 〜 `batch_{3*(N-1)+2:03d}` の 3 バッチ (= 150 件) を担当。総 Agent 数は `ceil(total_batches / 3)`、最後の Agent は 1〜2 バッチでもよい。
+担当割り当て: Agent N (N = 1, 2, ...) は `batch_{2*(N-1):03d}` 〜 `batch_{2*(N-1)+1:03d}` の 2 バッチ (= 100 件) を担当。総 Agent 数は `ceil(total_batches / 2)`、最後の Agent は 1 バッチでもよい。
 
 Claude Code の Agent ツール呼び出し例:
 
@@ -641,8 +641,8 @@ Agent({
   subagent_type: "general-purpose",
   model: "sonnet",
   prompt: <research/image_exclusion_prompt.md の「プロンプト本文」全文 +
-           {BATCH_PATHS} を担当 3 バッチの絶対パス改行区切りで置換 +
-           {RESULT_PATHS} を 3 結果ファイル (batch_NNN_result.json) の絶対パス改行区切りで置換>
+           {BATCH_PATHS} を担当 2 バッチの絶対パス改行区切りで置換 +
+           {RESULT_PATHS} を 2 結果ファイル (batch_NNN_result.json) の絶対パス改行区切りで置換>
 })
 ```
 
@@ -965,7 +965,7 @@ node research/extract_unique_vocab.js \
 本工程 (構造化抽出 5-1 + 正規化 5-2) は冒頭「## Agent 運用の共通原則」を必ず踏襲する。特に:
 
 - **1 chunk = Sonnet Agent 1 回 + Haiku Agent 1 回** で 1 単位
-- Sonnet Agent の 1 chunk = 150 件は共通原則「1 Agent = 150 件」と整合
+- **1 Agent = 1 chunk = 150 件** を担当 (並列禁止)
 - **chunk 単位で `progress.json` を更新** (Sonnet + Haiku 両方の書き出し成功で初めて completed)
 - **chunk 並列禁止**: chunk N の vocab 累積 (`vocab_after_chunk_NN.json`) が chunk N+1 の前段入力になるため、機能面でも並列不可
 
@@ -1093,7 +1093,7 @@ console.log("total rows:", all.length);
 
 - モデル: Sonnet (画像 + テキスト)
 - 1 バッチ = 50 件 (過去実績 `procedures/exclude_by_keywords_precision_check/` の運用に準拠)
-- 1 Agent = 3 バッチ = 150 件 (並列禁止、順次起動)
+- 1 Agent = 1 バッチ = 50 件 (並列禁止、順次起動)
 - 画像は 第 4 段階の画像除外 (image_exclusion_step) が DL 済みの `image_review/images/{rowIndex}.webp` を流用。不在なら `download_item_thumbnails.js` で自前 DL
 
 #### 画像 DL (download_item_thumbnails.js)
@@ -1170,8 +1170,8 @@ Agent (`subagent_type=general-purpose`, `model=sonnet`) に上記プロンプト
 
 **本工程は冒頭「## Agent 運用の共通原則」を必ず踏襲する**:
 
-- **1 Agent = 3 バッチ (150 件) を標準**、並列起動禁止 (共通原則 1)
-- **バッチ逐次保存**: 1 バッチ (50 件) 処理完了ごとに即 Write、3 バッチ分をまとめて一括 Write は禁止 (共通原則 3)。中断時に未 Write 分が全損するため
+- **1 Agent = 1 バッチ (50 件)**、並列起動禁止 (共通原則 1)
+- **バッチ書き出し**: 1 バッチ (50 件) 判定が完了したら即 `visual_batch_NNN.json` を Write (共通原則 3)
 - `agentId` を必ず控え、停止時は SendMessage で復帰、新規 `Agent()` は禁止 (共通原則 5)
 
 ##### progress.json の配置とスキーマ (5-3 専用)
@@ -1192,7 +1192,6 @@ Agent (`subagent_type=general-purpose`, `model=sonnet`) に上記プロンプト
 
 - `completed_units` の要素 = **バッチ番号 (NNN、非負整数)**、chunk 番号ではなく 5-3 のバッチ番号を入れる
 - 更新タイミング: 各バッチの `visual_batch_NNN.json` 書き出しと件数検証 (50 件) が完了した直後
-- 1 Agent = 3 バッチの場合、3 バッチ分すべてが書き出され件数検証を通過して初めて 3 件まとめて `completed_units` に追加
 
 ##### 実ファイル検証項目 (各バッチごと、共通原則 4)
 
@@ -1203,7 +1202,7 @@ Agent (`subagent_type=general-purpose`, `model=sonnet`) に上記プロンプト
 
 ##### スポットチェック (Agent 01 完了直後、必須)
 
-共通原則 6 に従い、最初の Agent (バッチ 0〜2 担当) 完了直後に目視確認:
+共通原則 6 に従い、最初の Agent (バッチ 0 担当) 完了直後に目視確認:
 
 - 画像を 5 枚ほど親 Claude で Read し、Agent が判定した pattern / material と実体が一致するか
 - category / subcategory が前段 vocab と整合するか (新規追加は妥当か)
@@ -1273,7 +1272,8 @@ identity_resolution/results/result_group_*.json
   6-3 最終 cluster_id 採番 (assign_final_cluster_ids.js)
     singleton + Agent 判定結果を集約
     cluster_id = {category}_{subcategory}_{連番3桁}
-    3 件以上のクラスタに is_purchase_candidate=true
+    各クラスタに count_total (= ids 合計 = 14 日 SOLD 件数) を付与
+    count_total >= 3 のクラスタに is_purchase_candidate=true
   ↓
 identity_resolution/final_clusters.json (仕入れ候補付き最終成果)
 ```
@@ -1285,7 +1285,7 @@ identity_resolution/final_clusters.json (仕入れ候補付き最終成果)
 | 6-1 仮クラスタリング | スクリプト (`build_identity_clusters.js`) | `visual_extraction/visual_full.json` | `identity_resolution/clusters.json` |
 | 6-2 プロンプト組立 | スクリプト (`build_identity_resolution_prompt.js`) | `identity_resolution_prompt.md` + `clusters.json` | `identity_resolution/prompts/prompt_group_<groupId>.md` |
 | 6-2 同一商品判定 | Sonnet agent (画像 + タイトル) | プロンプト + 画像 webp | `identity_resolution/results/result_group_<groupId>.json` |
-| 6-3 最終 cluster_id 採番 | スクリプト (`assign_final_cluster_ids.js`) | `clusters.json` + `results/*.json` | `identity_resolution/final_clusters.json` |
+| 6-3 最終 cluster_id 採番 | スクリプト (`assign_final_cluster_ids.js`) | `clusters.json` + `results/*.json` + `image_review/filtered_unflagged.json` | `identity_resolution/final_clusters.json` |
 
 ### 6-1 Node 仮クラスタリング (build_identity_clusters.js)
 
@@ -1378,7 +1378,7 @@ Agent (`subagent_type=general-purpose`, `model=sonnet`) に上記プロンプト
 
 - **1 Agent = 1 グループ (pending、size 2〜50) を標準**、並列起動禁止 (共通原則 1)
   - size 50 超のグループのみサブ分割し、サブバッチ 1 個 = 1 Agent 呼出 (50 件)
-  - 5-3 と異なり「3 バッチ集約」はしない (グループごとに出力ファイルを分ける設計のため)
+  - 出力ファイルは `result_group_<gid>.json` として groupId 別に分ける設計のため、1 Agent に複数グループを詰め込まない
 - `agentId` を必ず控え、停止時は SendMessage で復帰 (共通原則 5)
 - 親 Claude は画像 Read しない (共通原則 7、スポットチェック時のみ例外)
 
@@ -1452,12 +1452,13 @@ node research/assign_final_cluster_ids.js research/runs/<ts>
 - pending グループは `result_group_*.json` を読み、subgroup ごとに 1 クラスタを作る
 - サブ分割されたグループは `result_group_<gid>_sub_NN.json` を全部読んで結合 (サブ分割境界またぎは現状 2 周目判定をしないので、別 subgroup として扱う)
 - cluster_id = `{category}_{subcategory}_{連番3桁}` (連番は prefix ごと、例: `ショーツ_キッズショーツ_001`)
-- `items.length >= 3` のクラスタに `is_purchase_candidate=true` を立てる
+- 各クラスタに `count_total` を付与する。`count_total` = クラスタ内全 row の `ids` 配列要素数の合計 (= 14 日内に売れた件数)。`image_review/filtered_unflagged.json` を読み `rowIndex → ids 数` の Map を作って合計する
+- `count_total >= 3` のクラスタに `is_purchase_candidate=true` を立てる。Why: 1 seller が同一商品を 3 件以上売った場合も仕入れ候補として拾うため。row 数 (`size`) で判定すると単独 seller の連続出品が漏れる
 
 ### 出力
 
 - `research/runs/<ts>/identity_resolution/final_clusters.json`
-- `is_purchase_candidate=true` のクラスタが仕入れ候補 (3 件以上で売れ筋と判断)
+- `is_purchase_candidate=true` のクラスタが仕入れ候補 (`count_total` = 14 日 SOLD 件数の合計が 3 件以上で売れ筋と判断)
 
 第 6 段階完了時点で仕入れ候補クラスタの特定が終わる。次の第 7 段階 (`purchase_candidate_export_step`) で `is_purchase_candidate=true` のクラスタのみを CSV に書き出して仕入れ判断者に渡す。
 
@@ -1590,7 +1591,7 @@ research/runs/.gitkeep                                         # 第 2 段階以
 
 ### 書き出し対象
 
-`final_clusters.json` の `clusters` 配列のうち、**`is_purchase_candidate=true` のクラスタのみ** を書き出す (= クラスタ内 3 件以上)。3 件未満のクラスタ (singleton と 2 件クラスタ) は書き出さない。件数を確認したい場合は `final_clusters.json` の `summary.singletonClusters` と `summary.multiItemClusters` を参照する。
+`final_clusters.json` の `clusters` 配列のうち、**`is_purchase_candidate=true` のクラスタのみ** を書き出す (= `count_total >= 3` のクラスタ)。`count_total < 3` のクラスタは書き出さない。なお、`size` (= row 数) ではなく `count_total` (= ids 合計 = 14 日 SOLD 件数) で判定するため、size=1 (単独 seller の連続出品) のクラスタでも同一商品を 3 件以上売っていれば候補に含まれる。件数を確認したい場合は `final_clusters.json` の `summary.purchaseCandidates` を参照する。
 
 `is_purchase_candidate=true` のクラスタは全件書き出す (`slice` や「上位のみ」等で間引かない)。
 
@@ -1608,7 +1609,7 @@ research/runs/.gitkeep                                         # 第 2 段階以
 | # | カラム名 | 型 | 内容 | 取得元 |
 |---|---|---|---|---|
 | 1 | `cluster_id` | 文字列 | 6-3 採番の cluster_id | `cluster.cluster_id` |
-| 2 | `count` | 整数 | クラスタ内件数 | `cluster.size` |
+| 2 | `count` | 整数 | クラスタ内 14 日 SOLD 件数 (= `ids` 合計) | `cluster.count_total` (無ければ `cluster.size` にフォールバック) |
 | 3 | `representative_title` | 文字列 | 代表タイトル (items 先頭の name) | `cluster.items[0].name` |
 | 4 | `price_min` | 整数 | クラスタ内最小価格 | 第 1 段階生データから `items[*].rowIndex` で引いた `price` の min |
 | 5 | `price_max` | 整数 | クラスタ内最大価格 | 同上、max |
@@ -1623,7 +1624,7 @@ research/runs/.gitkeep                                         # 第 2 段階以
 | 14 | `url_2` | URL | クラスタ内 2 件目の商品 URL | `items[1].rowIndex` で引いた URL |
 | 15 | `url_3` | URL | クラスタ内 3 件目の商品 URL | `items[2].rowIndex` で引いた URL |
 
-`is_purchase_candidate=true` は必ず `count >= 3` のため、`url_1 / url_2 / url_3` は常に 3 列とも埋まる。
+`count` (= `count_total`) は常に 3 以上だが、これは ids 合計であり cluster の `items` 数 (= row 数) とは別である。size=1 や size=2 のクラスタでも `count_total >= 3` なら候補になるため、`url_2` や `url_3` は対応する row が存在せず空セルになる場合がある。
 
 ### 禁止事項
 
