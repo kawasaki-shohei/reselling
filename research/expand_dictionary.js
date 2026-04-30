@@ -54,7 +54,19 @@ const PROJECT_ROOT = path.resolve(__dirname, '..');
 const ABS = (p) => path.join(PROJECT_ROOT, p);
 const PENDING_PATH = path.resolve(OUT_DIR, 'keywords_pending.json');
 
-const prompt = `メルカリ売れ筋リサーチの除外キーワード抽出担当として作業してください。
+const prompt = `【絶対禁則】ファイル操作の制約
+
+以下を厳守すること。違反しそうな操作を察知したら実行せず、即座に停止して人間に報告する。
+
+1. 出力先として明示された ${PENDING_PATH} 以外のファイルを Write / Edit / NotebookEdit してはならない
+2. 入力ファイル (keywords.json、keywords_design_notes.md、unflagged_titles.json、references/*.pdf) を一切書き換えない
+3. プロジェクト内の他ファイル (手順書、スクリプト、辞書、ADR 等) を変更しない
+4. 上記以外のファイルシステム書き込み操作 (mkdir / mv / rm 等) を行わない
+5. 違反しそうな操作は実行せず、その時点で停止して人間に報告する
+
+---
+
+メルカリ売れ筋リサーチの除外キーワード抽出担当として作業してください。
 
 ## 入力ファイル (絶対パス)
 
@@ -94,7 +106,7 @@ ${PENDING_PATH} に書き出してください。
    - 具体名・複合語への置き換え (例: "アイス" ではなく "アイスクリーム")
    - notWith (単独除外したいが一部文脈で誤爆する場合)
    - withAll (単独では除外せず、特定の語と同時に出るときだけ除外する場合)
-3. 各候補は priority の 8 カテゴリのいずれかに分類する
+3. 各候補は priority のいずれかのカテゴリに分類する
 4. 各候補について、候補タイトル例を 1〜3 件 \`_sources\` に併記する
 5. タイトルに出現していても、PDF の禁止カテゴリに該当しない商品 (= 仕入れ候補になりうるもの) は出さない
 6. 判断に迷ったら出さない (偽陽性より見逃しを許容する)

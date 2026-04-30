@@ -1,12 +1,14 @@
 // 第 4 段階の画像除外: バッチ分割スクリプト。
-// image_review/all.json を BATCH_SIZE 件ずつ image_review/batches/batch_NNN.json に分割する。
+// image_review/<INPUT_FILENAME> を BATCH_SIZE 件ずつ image_review/batches/batch_NNN.json に分割する。
 //
 // 使い方:
-//   node research/split_image_review_batches.js <image_review_dir> [BATCH_SIZE]
+//   node research/split_image_review_batches.js <image_review_dir> [BATCH_SIZE] [INPUT_FILENAME]
 //   BATCH_SIZE のデフォルト: 50
+//   INPUT_FILENAME のデフォルト: all.json
 //
 // 例:
 //   node research/split_image_review_batches.js research/runs/2026_04_16_06_46/image_review
+//   node research/split_image_review_batches.js research/runs/2026_04_28_10_26/image_review 50 all_after_pdf_check.json
 
 const fs = require('fs');
 const path = require('path');
@@ -25,9 +27,9 @@ function batchFileName(index) {
 }
 
 function main() {
-  const [, , RUN_DIR_ARG, BATCH_SIZE_ARG] = process.argv;
+  const [, , RUN_DIR_ARG, BATCH_SIZE_ARG, INPUT_FILENAME_ARG] = process.argv;
   if (!RUN_DIR_ARG) {
-    console.error('Usage: node research/split_image_review_batches.js <image_review_dir> [BATCH_SIZE]');
+    console.error('Usage: node research/split_image_review_batches.js <image_review_dir> [BATCH_SIZE] [INPUT_FILENAME]');
     process.exit(1);
   }
 
@@ -36,10 +38,11 @@ function main() {
   if (!Number.isInteger(BATCH_SIZE) || BATCH_SIZE < 1) {
     throw new Error(`BATCH_SIZE must be a positive integer: ${BATCH_SIZE_ARG}`);
   }
+  const INPUT_FILENAME = INPUT_FILENAME_ARG || 'all.json';
 
-  const ALL_PATH = path.join(RUN_DIR, 'all.json');
+  const ALL_PATH = path.join(RUN_DIR, INPUT_FILENAME);
   if (!fs.existsSync(ALL_PATH)) {
-    console.error(`all.json not found: ${ALL_PATH}`);
+    console.error(`input not found: ${ALL_PATH}`);
     process.exit(1);
   }
 

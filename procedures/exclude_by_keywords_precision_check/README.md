@@ -68,7 +68,7 @@ date '+%Y-%m-%d %H:%M:%S %Z'
 # 4. 前回レポートを確認 (手元にあれば比較用、git 管理外)
 ls procedures/exclude_by_keywords_precision_check/reports/ 2>/dev/null || echo "no previous reports (initial run)"
 
-# 5. 分類器の前提が崩れていないか (9 カテゴリ構造、priority 配列)
+# 5. 分類器の前提が崩れていないか (priority 配列の構造)
 node -e 'const c = require("./research/_classifier"); console.log(c.loadDictionary(null).priority)'
 ```
 
@@ -379,7 +379,7 @@ SendMessage({
 
 ### 7.4 Agent 01 完了直後のスポットチェック (必須)
 
-最初の Agent が完了したら、§4.6.5 のコードで 10 件抜粋を目視確認。keep/exclude の境界判定・連想 NG の適用 (adidas 三本ラインなど)・private_transaction の扱いに問題がないか確認。品質問題があれば以降を止めてプロンプト修正。
+最初の Agent が完了したら、§4.6.5 のコードで 10 件抜粋を目視確認。keep/exclude の境界判定・連想 NG の適用 (adidas 三本ラインなど) に問題がないか確認。品質問題があれば以降を止めてプロンプト修正。
 
 ### 7.5 プロンプト簡略化の許容範囲
 

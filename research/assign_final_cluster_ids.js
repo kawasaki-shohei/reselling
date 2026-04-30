@@ -12,12 +12,18 @@
  * 入力:
  *   <run-dir>/identity_resolution/clusters.json (6-1 出力)
  *   <run-dir>/identity_resolution/results/result_group_*.json (6-2 出力、複数)
+ *   <run-dir>/image_review/filtered_unflagged.json (各 row の ids 数 = 14 日 SOLD 件数)
  *
  * 出力:
  *   <run-dir>/identity_resolution/final_clusters.json
  *
  * cluster_id 命名: `{category}_{subcategory}_{連番3桁}` (subcategory が null なら `{category}__{連番3桁}`)
- * 仕入れ候補フラグ: size >= 3 で is_purchase_candidate=true
+ *
+ * 仕入れ候補フラグ:
+ *   cluster.count_total (= cluster 内の全 row の ids 合計 = 14 日内に売れた件数)
+ *   が PURCHASE_THRESHOLD 以上なら is_purchase_candidate=true。
+ *   Why: 1 seller が同一商品を 3 件以上売った場合も仕入れ候補として拾う。
+ *   row 数 (size) で判定すると単独 seller の連続出品が漏れる。
  */
 
 const fs = require("node:fs");
@@ -70,7 +76,24 @@ function loadResultsForGroup(resultsDir, groupId) {
   );
 }
 
-function buildFinalClusters({ groups, resultsDir }) {
+function loadRowCounts(runDir) {
+  const filteredPath = path.join(runDir, "image_review", "filtered_unflagged.json");
+  if (!fs.existsSync(filteredPath)) {
+    throw new Error(`filtered_unflagged.json does not exist: ${filteredPath}`);
+  }
+  const filtered = JSON.parse(fs.readFileSync(filteredPath, "utf8"));
+  const m = new Map();
+  for (const r of filtered.rows) m.set(r.rowIndex, r.ids.length);
+  return m;
+}
+
+function totalIdsCount(items, rowCounts) {
+  let s = 0;
+  for (const it of items) s += rowCounts.get(it.rowIndex) ?? 1;
+  return s;
+}
+
+function buildFinalClusters({ groups, resultsDir, rowCounts }) {
   const prefixCounter = new Map();
   const finalClusters = [];
 
@@ -91,13 +114,15 @@ function buildFinalClusters({ groups, resultsDir }) {
 
     if (g.status === "singleton_confirmed") {
       const cid = nextId(category, subcategory);
+      const countTotal = totalIdsCount(g.items, rowCounts);
       finalClusters.push({
         cluster_id: cid,
         source: "singleton",
         source_group_id: g.groupId,
         group_key: g.groupKey,
         size: 1,
-        is_purchase_candidate: 1 >= PURCHASE_THRESHOLD,
+        count_total: countTotal,
+        is_purchase_candidate: countTotal >= PURCHASE_THRESHOLD,
         representative_attributes: g.items[0].attributes,
         items: g.items.map((it) => ({
           rowIndex: it.rowIndex,
@@ -116,6 +141,7 @@ function buildFinalClusters({ groups, resultsDir }) {
         source_group_id: g.groupId,
         group_key: g.groupKey,
         size: g.items.length,
+        count_total: totalIdsCount(g.items, rowCounts),
         is_purchase_candidate: false,
         representative_attributes: g.items[0].attributes,
         items: g.items.map((it) => ({
@@ -136,13 +162,15 @@ function buildFinalClusters({ groups, resultsDir }) {
           .filter(Boolean);
         if (items.length === 0) continue;
         const cid = nextId(category, subcategory);
+        const countTotal = totalIdsCount(items, rowCounts);
         finalClusters.push({
           cluster_id: cid,
           source: res.subgroups.length === 1 && results.length === 1 ? "agent_single_subgroup" : "agent_split",
           source_group_id: g.groupId,
           group_key: g.groupKey,
           size: items.length,
-          is_purchase_candidate: items.length >= PURCHASE_THRESHOLD,
+          count_total: countTotal,
+          is_purchase_candidate: countTotal >= PURCHASE_THRESHOLD,
           representative_attributes: items[0].attributes,
           agent_reason: sg.reason ?? null,
           items: items.map((it) => ({
@@ -196,7 +224,8 @@ function main() {
     throw new Error(`clusters.json does not exist: ${clustersPath}`);
   }
   const { groups } = JSON.parse(fs.readFileSync(clustersPath, "utf8"));
-  const finalClusters = buildFinalClusters({ groups, resultsDir });
+  const rowCounts = loadRowCounts(runDir);
+  const finalClusters = buildFinalClusters({ groups, resultsDir, rowCounts });
   const summary = summarize(finalClusters);
 
   const outPath = path.join(idDir, "final_clusters.json");

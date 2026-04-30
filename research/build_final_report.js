@@ -41,6 +41,10 @@
  *   category, subcategory, color, size, quantity, pattern, material,
  *   url_1, url_2, url_3
  *
+ * count 列の意味:
+ *   cluster 内の全 row の ids 合計 (= 14 日内に売れた件数)。final_clusters.json の
+ *   count_total を採用し、無ければ size (= row 数) にフォールバックする。
+ *
  * 不変性原則: 出力パスが既に存在する場合はエラー停止 (共通原則 1)。
  */
 
@@ -164,7 +168,7 @@ function buildRow(cluster, rawById) {
   const [url1, url2, url3] = pickUrls(cluster.items, rawById);
   return {
     cluster_id: cluster.cluster_id,
-    count: cluster.size,
+    count: cluster.count_total ?? cluster.size,
     representative_title: cluster.items[0]?.name ?? "",
     price_min: min,
     price_max: max,

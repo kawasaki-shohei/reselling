@@ -112,10 +112,10 @@
 複数カテゴリに同時にマッチしたとき、`priority` 配列順で primary が決まる:
 
 ```
-food > plant_quarantine > medical > cosmetics_yakki > character_copyright > brand_imitation > electronics_check > handmade > private_transaction
+food > plant_quarantine > medical > cosmetics_yakki > character_copyright > brand_imitation > electronics_check > handmade > underwear
 ```
 
-法令リスクが大きいものほど前に並ぶ (食品衛生法・植物検疫 > 薬機法 > 版権 > 模造 > 電波法 > ハンドメイド > 取引専用)。`private_transaction` は法令違反ではないが、仕入れ判断不能・運用トラブルリスクの観点で除外。
+法令リスクが大きいものほど前に並ぶ (食品衛生法・植物検疫 > 薬機法 > 版権 > 模造 > 電波法 > ハンドメイド > 下着)。
 
 ---
 

@@ -1,6 +1,12 @@
 /**
  * メルカリ売れ筋リサーチ — 14日ウィンドウ方式 収集スクリプト
  *
+ * 収集対象: 14 日以内に購入者が決まった商品 (status = SOLD_OUT または TRADING)
+ *   - SOLD_OUT: 取引完了 (受取・評価済み)
+ *   - TRADING:  購入者決定済み、取引進行中 (UI では SOLD バッジが付く)
+ *   仕入れ判断者の認識「SOLD = 売れた」と揃えるため両者を同列に扱う。取引
+ *   キャンセル等で後から on_sale に戻る稀なケースはノイズとして許容する。
+ *
  * 使い方:
  *   Claude Code の browser_evaluate でこのファイルの中身を実行する。
  *   （Node.js単体では動かない。ブラウザのIndexedDB・Cookieが必要なため）
@@ -9,6 +15,18 @@
  *   2. 3秒待つ
  *   3. browser_evaluate でこのファイルの内容を実行する
  *      - filename パラメータは指定しない（スクリプト内でファイル保存先を生成する）
+ *
+ * ⚠️ レート制限により 1 キーワードずつ実行する必要がある (2026-04-28 実測):
+ *   全 KEYWORDS × 5 価格帯 を `Promise.all` で一括並列実行すると、
+ *   Mercari API のレート制限により大量の 4xx/5xx が返り、
+ *   `resp.ok=false` で各検索が早期終了して取得件数が大幅に減る。
+ *   - 単独「インポート」のみ実行 (5 価格帯並列): 9,824 件
+ *   - 全 11 キーワード一括並列: 同「インポート」でも 1,039 件しか取れない
+ *   よって本スクリプトを `browser_evaluate` で実行する側は、
+ *   **1 キーワード (5 価格帯並列) ずつ呼び出して結果をマージすること**。
+ *   現在のスクリプト本体は KEYWORDS 配列を内部で全件ループする実装のままだが、
+ *   この実装をそのまま使うと取りこぼすため、呼び出し側で 1 キーワードずつに
+ *   絞り込んだ別バージョンとして実行する運用にしている。
  *
  * 出力:
  *   research/YYYY_MM_DD_HH_MM__mercari_14day_results.json
@@ -60,7 +78,7 @@ async () => {
   // === 定数 ===
   const API = 'https://api.mercari.jp/v2/entities:search';
   const BOUNDARY_TS = Math.floor(Date.now() / 1000) - 14 * 86400;
-  const KEYWORDS = ['インポート', '韓国', 'オルチャン', '海外', '輸入', '再販', '再入荷', 'ラスト一点', '入荷しました', '人気'];
+  const KEYWORDS = ['インポート', 'インポート 日用品', '韓国', 'オルチャン', '海外', '輸入', '再販', '再入荷', 'ラスト一点', '入荷しました', '人気'];
   const PRICE_RANGES = [[800, 1000], [1000, 1200], [1200, 2000], [2000, 3000], [3000, 5000]];
   const startTime = Date.now();
 
@@ -79,7 +97,7 @@ async () => {
         source: 'BaseSerp', indexRouting: 'INDEX_ROUTING_UNSPECIFIED', thumbnailTypes: [],
         searchCondition: {
           keyword, excludeKeyword: '', sort: 'SORT_CREATED_TIME', order: 'ORDER_DESC',
-          status: ['STATUS_SOLD_OUT'], sizeId: [], categoryId: [], brandId: [], sellerId: [],
+          status: ['STATUS_SOLD_OUT', 'STATUS_TRADING'], sizeId: [], categoryId: [], brandId: [], sellerId: [],
           priceMin, priceMax, itemConditionId: [1],
           shippingPayerId: [], shippingFromArea: [], shippingMethod: [],
           colorId: [], hasCoupon: false, attributes: [],

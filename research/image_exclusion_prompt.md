@@ -48,9 +48,9 @@
 
 ## 除外カテゴリ
 
-判定基準の一次資料は `procedures/exclude_by_keywords/keywords.json` の `priority` 配列。各カテゴリ名 (food / plant_quarantine / medical / cosmetics_yakki / character_copyright / brand_imitation / electronics_check / handmade / underwear / private_transaction 等、辞書追加で増える可能性あり) は禁止理由を表す。
+判定基準の一次資料は `procedures/exclude_by_keywords/keywords.json` の `priority` 配列。各カテゴリ名 (food / plant_quarantine / medical / cosmetics_yakki / character_copyright / brand_imitation / electronics_check / handmade / underwear 等、辞書追加で増える可能性あり) は禁止理由を表す。
 
-具体的に判定で迷う事例の一覧は `procedures/exclude_by_keywords_precision_check/agent_prompt_unflagged.md` の「除外 9 カテゴリ」「連想デザイン NG 一覧」「その他の法令注意点」「短語誤爆に惑わされない」セクションを参照すること (本プロンプトでは重複を避ける、辞書改訂で増えた新カテゴリは適宜判断する)。
+具体的に判定で迷う事例の一覧は `procedures/exclude_by_keywords_precision_check/agent_prompt_unflagged.md` の「除外カテゴリの定義」「連想デザイン NG 一覧」「その他の法令注意点」「短語誤爆に惑わされない」セクションを参照すること (本プロンプトでは重複を避ける、辞書改訂で増えた新カテゴリは適宜判断する)。
 
 ## 判定フロー (バッチごとに逐次保存)
 

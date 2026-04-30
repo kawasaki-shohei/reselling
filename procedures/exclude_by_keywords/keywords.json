@@ -9,7 +9,7 @@
     "electronics_check",
     "handmade",
     "underwear",
-    "private_transaction"
+    "sourcing_unavailable"
   ],
   "keywords": {
     "food": [
@@ -396,13 +396,16 @@
       "ネブライザー"
     ],
     "handmade": [
-      { "keyword": "ハンドメイド", "notWith": ["ステンシルシート", "型紙", "シリコンモールド", "生地", "布地", "ファスナー", "デザインボード", "レジン", "リボン", "ビーズ", "コットン", "レース"] },
+      { "keyword": "ハンドメイド", "notWith": ["ステンシルシート", "型紙", "シリコンモールド", "生地", "布地", "ファスナー", "デザインボード", "レジン", "ビーズ"] },
       "hand made", "handmade", "HANDMADE",
       "手作り", "手描き", "手染め", "手縫い",
       "オーダーメイド", "オーダー受付",
       "ぬい服", "ぬいぐるみ服", "ぬい 服",
       "着ぐるみ オーダー",
-      "手描きイラスト"
+      "手描きイラスト",
+      "ダイヤモンドアート",
+      "ダイアモンドアート",
+      "ちゅるん"
     ],
     "underwear": [
       "ボクサーパンツ",
@@ -415,12 +418,11 @@
       { "keyword": "ショーツ", "notWith": ["WAIPER"] },
       { "keyword": "下着", "notWith": ["下着収納"] }
     ],
-    "private_transaction": [
-      { "keyword": "様", "withAll": ["専用"] },
-      { "keyword": "様", "withAll": ["リクエスト"] },
-      { "keyword": "さま", "withAll": ["専用"] },
-      { "keyword": "さま", "withAll": ["リクエスト"] },
-      { "keyword": "さん", "withAll": ["専用"] }
+    "sourcing_unavailable": [
+      "シルバー925", "シルバー 925",
+      "SV925",
+      "S925",
+      "Silver925"
     ]
   }
 }
