@@ -48,9 +48,9 @@
 
 ## 除外カテゴリ
 
-判定基準の一次資料は `procedures/exclude_by_keywords/keywords.json` の `priority` 配列。各カテゴリ名 (food / plant_quarantine / medical / cosmetics_yakki / character_copyright / brand_imitation / electronics_check / handmade / underwear 等、辞書追加で増える可能性あり) は禁止理由を表す。
+判定基準の一次資料は `procedures/exclude_by_keywords/keywords.json` の `priority` 配列。各カテゴリ名 (food / plant_quarantine / medical / cosmetics_yakki / character_copyright / brand_imitation / electronics_check / handmade / underwear / sourcing_unavailable / media 等、辞書追加で増える可能性あり) は禁止理由を表す。
 
-具体的に判定で迷う事例の一覧は `procedures/exclude_by_keywords_precision_check/agent_prompt_unflagged.md` の「除外カテゴリの定義」「連想デザイン NG 一覧」「その他の法令注意点」「短語誤爆に惑わされない」セクションを参照すること (本プロンプトでは重複を避ける、辞書改訂で増えた新カテゴリは適宜判断する)。
+各カテゴリの法令根拠原文は `references/注意商品.pdf` (page 5-6 の法令一覧、page 1-4 のブランド・キャラ例) に記載。判定基準の整理版は `procedures/exclude_by_keywords_precision_check/agent_prompt_unflagged.md` の「除外カテゴリの定義」「連想デザイン NG 一覧」「その他の法令注意点」「短語誤爆に惑わされない」セクションに集約済 (本プロンプトでは重複を避ける)。**疑わしい/判定迷う場合は PDF を直接 Read して原文に当たること** (詳細は判定フローの e を参照)。
 
 ## 判定フロー (バッチごとに逐次保存)
 
@@ -68,7 +68,7 @@
    b. title + 画像 を照合し、除外カテゴリに該当するか判定
    c. 該当 → verdict = "exclude" / reason = カテゴリ名 + 30 字以内の理由
    d. 該当せず → verdict = "keep" / reason = 30 字以内の根拠
-   e. 判別困難 → verdict = "unclear" / reason = 困難な理由
+   e. 判別困難 (= unclear としようとした場合): まず `references/注意商品.pdf` を Read で再確認する (page 5-6 が法令一覧、page 1-4 がブランド・キャラ例)。PDF を読むことで該当する法令カテゴリが見つかれば exclude に倒す。それでも判定不能なら verdict = "unclear" / reason = 困難な理由
 3. **50 件判定が終わったら即 batch_<1 つ目>_result.json を Write**
 4. 次のバッチに進み、1〜3 を繰り返す
 5. 全 3 バッチ完了したら、各 result.json を Read して件数が 50 件ずつ揃っていることを自己検証し、「全 150 件保存完了」と報告
