@@ -254,7 +254,7 @@ SendMessage({
 
 `research/collect.js` を Playwright MCP の `browser_evaluate` 経由で実行し、14 日以内に購入者が決まった商品データを収集する。
 
-- **収集対象のステータス**: `STATUS_SOLD_OUT` (取引完了) と `STATUS_TRADING` (取引中、購入者決定済み) の両方。メルカリ UI で SOLD バッジが付く商品すべてに相当する。仕入れ判断者の「SOLD = 売れた」認識と揃える目的 (trading 分のキャンセルノイズは許容)
+- **収集対象のステータス**: `STATUS_SOLD_OUT` (取引完了) と `STATUS_TRADING` (取引中、購入者決定済み) の両方。メルカリ UI で SOLD バッジが付く商品すべてに相当する。物販オーナーの「SOLD = 売れた」認識と揃える目的 (trading 分のキャンセルノイズは許容)
 - 入口キーワード × 価格帯 5 区間を **1 キーワードずつ** 順次実行 (各キーワード内では 5 価格帯を並列)
 - **⚠️ レート制限のため一括並列禁止** (2026-04-28 実測): 全キーワード × 5 価格帯を `Promise.all` で一括並列実行すると Mercari API の 4xx/5xx で `resp.ok=false` になり各検索が早期終了し、取得件数が大幅に減る (単独「インポート」9,824 件 → 全 11 キーワード一括では同キーワードで 1,039 件)。`browser_evaluate` 1 回につき 1 キーワード (5 価格帯並列) ずつ実行し、全キーワード分を順次呼び出して結果をマージする
 - **ブラウザ準備は本手順書を実行する Claude Code 自身が行う**。`collect.js` を実行する前に Playwright MCP (`browser_navigate`) で `https://jp.mercari.com` を開き、DPoP 認証のためのセッションを確立する (未ログインで可)。**ユーザーに「ブラウザを開いてください」と依頼しない**
@@ -1460,7 +1460,7 @@ node research/assign_final_cluster_ids.js research/runs/<ts>
 - `research/runs/<ts>/identity_resolution/final_clusters.json`
 - `is_purchase_candidate=true` のクラスタが仕入れ候補 (`count_total` = 14 日 SOLD 件数の合計が 3 件以上で売れ筋と判断)
 
-第 6 段階完了時点で仕入れ候補クラスタの特定が終わる。次の第 7 段階 (`purchase_candidate_export_step`) で `is_purchase_candidate=true` のクラスタのみを CSV に書き出して仕入れ判断者に渡す。
+第 6 段階完了時点で仕入れ候補クラスタの特定が終わる。次の第 7 段階 (`purchase_candidate_export_step`) で `is_purchase_candidate=true` のクラスタのみを CSV に書き出して物販オーナーに渡す。
 
 ---
 
@@ -1573,11 +1573,11 @@ research/runs/.gitkeep                                         # 第 2 段階以
 
 ## 第 7 段階: 仕入れ候補書き出し (purchase_candidate_export_step)
 
-第 6 段階までで揃った `identity_resolution/final_clusters.json` から、`is_purchase_candidate=true` のクラスタのみを CSV ファイルに書き出して仕入れ判断者に渡す。本段階が本手順書のゴール。
+第 6 段階までで揃った `identity_resolution/final_clusters.json` から、`is_purchase_candidate=true` のクラスタのみを CSV ファイルに書き出して物販オーナーに渡す。本段階が本手順書のゴール。
 
 ### 目的
 
-本手順書冒頭「## やりたいこと」の 2 条件 (ブランド模造・除外条件に合致しない + 14 日間に 3 個以上の販売実績) を両方満たしたクラスタを、仕入れ判断者が Google Sheets などで扱える形 (CSV) で書き出す。
+本手順書冒頭「## やりたいこと」の 2 条件 (ブランド模造・除外条件に合致しない + 14 日間に 3 個以上の販売実績) を両方満たしたクラスタを、物販オーナーが Google Sheets などで扱える形 (CSV) で書き出す。
 
 ### 入出力
 

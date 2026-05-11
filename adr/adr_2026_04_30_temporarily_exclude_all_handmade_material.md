@@ -19,7 +19,7 @@
 
 ### 過去回答 (2026-04-19) との方針差異
 
-| 日付 | 仕入れ判断者の回答 | 由来 |
+| 日付 | 物販オーナーの回答 | 由来 |
 |---|---|---|
 | 2026-04-19 | 「ハンドメイド素材・道具は中国輸入商品が多いので別扱い (= 残す)」 | [過去の判断依頼ドキュメント (Google Docs)](https://docs.google.com/document/d/1uJHh9cBvcQggRiF49dPASx45PwoglXbneDNIEJRTX6I/edit?tab=t.0#bookmark=id.il1vxy4kmbsu) |
 | 2026-04-30 | 「ファスナー素材・パラコード等、アリババで取扱があり利益も取れる商品は将来仕入れる予定。ただしハンドメイド素材は選定 (カラー・サイズ・数量バリエーション) のリサーチに時間を要し、現在は事業の駆け出しでリソースを割いていない。今は暫定的に一律除外でよい」 | [本回の判断依頼ドキュメント (Google Docs)](https://docs.google.com/document/d/1QtiZZWFi-XBoG4n7YGOiIPKifh-3Th0z9PbmGc7avcQ/edit) |
@@ -57,4 +57,4 @@
 ## 関連ドキュメント更新 (2026-04-30)
 
 - [`../procedures/exclude_by_keywords/keywords.json`](../procedures/exclude_by_keywords/keywords.json): `handmade` カテゴリの「ハンドメイド」notWith から素材保護語を削除、生地系キーワードを追加 (誤爆チェック後、別作業)
-- [`../docs/research/mercari/feedbacks/`](../docs/research/mercari/feedbacks/): 仕入れ判断者からの回答 (2026-04-19 分・2026-04-30 分) を保管
+- [`../docs/research/mercari/feedbacks/`](../docs/research/mercari/feedbacks/): 物販オーナーからの回答 (2026-04-19 分・2026-04-30 分) を保管

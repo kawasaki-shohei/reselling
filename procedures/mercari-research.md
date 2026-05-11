@@ -97,7 +97,7 @@ https://jp.mercari.com/search?keyword=インポート&status=sold_out|trading&it
 
 **verdict 別ファイル分割の意図**:
 
-- `keep`: 仕入れ判断者がそのまま検討できる「禁止商品ではない」候補
+- `keep`: 物販オーナーがそのまま検討できる「禁止商品ではない」候補
 - `unclear`: タイトルだけでは判定しきれず、画像目視等で再判定が必要な候補
 - `exclude` (禁止商品確定): CSV には**載せない**。判定結果は `pdf_check/all_judgments.json` に残る
 
