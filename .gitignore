@@ -27,16 +27,19 @@ node_modules/
 tmp/
 
 # リサーチ生データ（collect.js で再生成可能・サイズ大）
-# 特定ファイルをコミットしたい場合は下に ! で例外指定する
 research/*.json
 
 # パイプライン実行出力（各段階の中間・最終成果物。サイズ大・再生成可能）
-# runs/ ディレクトリ自体は残したいので .gitkeep だけ許可、配下は無視
 research/runs/*
 !research/runs/.gitkeep
 
 # リサーチレポート（ひとまず ignore。コミット運用を決めたら外す）
 reports/
+
+# 出品実行出力
+listings/runs/*
+!listings/runs/.gitkeep
+
 # 精度検証レポートのディレクトリ自体は残したいので .gitkeep だけ許可、配下は ignore
 !procedures/exclude_by_keywords_precision_check/reports/
 procedures/exclude_by_keywords_precision_check/reports/*

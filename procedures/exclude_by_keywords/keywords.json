@@ -10,7 +10,8 @@
     "handmade",
     "underwear",
     "sourcing_unavailable",
-    "media"
+    "media",
+    "korea"
   ],
   "keywords": {
     "food": [
@@ -440,7 +441,14 @@
       "CD",
       "書籍",
       "コミック",
-      { "keyword": "漫画", "notWith": ["デッサン"] }
+      { "keyword": "漫画", "notWith": ["デッサン"] },
+      { "keyword": "テキスト", "notWith": ["ウィスパー"] },
+      "問題集",
+      { "keyword": "洋書", "notWith": ["ミニチュア"] }
+    ],
+    "korea": [
+      "韓国",
+      "ハングル"
     ]
   }
 }

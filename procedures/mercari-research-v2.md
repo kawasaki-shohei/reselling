@@ -464,11 +464,12 @@ image_review/filtered_unflagged.json (verdict ∈ {keep, unclear} のみ、第 5
 |---|---|---|---|---|
 | 1 | キーワード除外判定 | スクリプト (`exclude_by_keywords.js`) | 生データ + 正規辞書 + 暫定辞書 | `exclusion_final/exclusion_output.json`、`exclusion_final/exclusion_stats.md` |
 | 2 | 判定対象抽出 | スクリプト (`prepare_image_review.js`) | `exclusion_final/exclusion_output.json` | `image_review/all.json` |
-| 2 | バッチ分割 | スクリプト (`split_image_review_batches.js`) | `image_review/all.json` | `image_review/batches/batch_NNN.json` |
+| 2 | 過去判定引き継ぎ (任意) | スクリプト (`inherit_image_review.js`) | `image_review/all.json` + 過去 run の `image_review/judgments.json` | `image_review/all_after_inherit.json` (未判定) + `image_review/results/inherited_result.json` (引き継ぎ分) |
+| 2 | バッチ分割 | スクリプト (`split_image_review_batches.js`) | `image_review/all_after_inherit.json` (引き継ぎを実行しない場合は `all.json`) | `image_review/batches/batch_NNN.json` |
 | 2 | 画像並列 DL | スクリプト (`download_image_review_thumbnails.js`、内部で `_image_download.js`) | `image_review/all.json` の thumbnail URL | `image_review/images/{rowIndex}.webp` |
 | 2 | progress.json 初期化 | bash | バッチ総数 | `image_review/progress.json` |
 | 2 | 画像レビュー判定 | Sonnet Agent | バッチ JSON + 画像 + プロンプト (`research/image_exclusion_prompt.md`) | `image_review/results/batch_NNN_result.json` |
-| 2 | 集計 + 第 5 段階入力生成 | スクリプト (`aggregate_image_review.js`) | `results/batch_*_result.json` | `image_review/judgments.json`、`image_review/filtered_unflagged.json` |
+| 2 | 集計 + 第 5 段階入力生成 | スクリプト (`aggregate_image_review.js`) | `results/batch_*_result.json` + `results/inherited_result.json` (任意) | `image_review/judgments.json`、`image_review/filtered_unflagged.json` |
 
 ### キーワードマッチング (`exclude_by_keywords.js`)
 
@@ -603,12 +604,39 @@ Sonnet 全件。**本工程は 1 Agent = 2 バッチ (100 件)** を担当する
 # 1. unflagged 抽出 + image_review/all.json 生成
 node research/prepare_image_review.js research/<rawfile>.json
 
+# 1.5. (任意) 過去 run の判定引き継ぎ
+#      過去 run の image_review/judgments.json から first_id 一致する行を切り離し、
+#      Sonnet 判定対象を未判定 items に絞る。詳細は次節「過去判定の引き継ぎ」参照
+node research/inherit_image_review.js research/runs/<ts>/image_review
+
 # 2. 50 件 / バッチに分割 → image_review/batches/batch_NNN.json
-node research/split_image_review_batches.js research/runs/<ts>/image_review
+#    引き継ぎを実行した場合は入力ファイル名 all_after_inherit.json を 3 引数目で渡す
+node research/split_image_review_batches.js research/runs/<ts>/image_review 50 all_after_inherit.json
+# 引き継ぎを実行していない場合は引数省略 (デフォルト all.json):
+# node research/split_image_review_batches.js research/runs/<ts>/image_review
 
 # 3. 画像並列 DL → image_review/images/{rowIndex}.webp (再実行時は既存 webp スキップ)
 node research/download_image_review_thumbnails.js research/runs/<ts>/image_review
 ```
+
+##### 過去判定の引き継ぎ (inherit_image_review.js)
+
+同じ商品 ID (`item.id`、mXXX) を 2 回 Sonnet 画像判定するのは Sonnet コストの無駄なため、ステップ 1 出力の `image_review/all.json` から **過去 run の `judgments.json` で判定済みの行** を切り離し、Sonnet 判定対象を未判定 items に絞る。
+
+```bash
+node research/inherit_image_review.js research/runs/<ts>/image_review
+```
+
+- 入力: `image_review/all.json` (ステップ 1 出力)
+- 出力 (どちらも既存時はエラー終了):
+  - `image_review/all_after_inherit.json` (未判定 items、ステップ 2 のバッチ分割の入力)
+  - `image_review/results/inherited_result.json` (引き継いだ判定、ステップ 6 の `aggregate_image_review.js` がそのまま集約に取り込む)
+- 過去 run の自動検出: `research/runs/*/image_review/judgments.json` が存在する run のうち、現在 run と同名でないものを新しい順に走査、最初に first_id 一致した判定を採用 (= 重複時は新しい run の判定を優先)
+- 明示指定: `--from research/runs/<prev-ts>` (複数指定可)。`--from` を 1 つも指定しなければ自動検出
+- 入力ファイル名を変更したい場合: `--input <filename>` (デフォルト `all.json`)。例えば pdf_check 後のファイル `all_after_pdf_check.json` を入力に取りたい場合
+- 過去判定が 0 件 (= 初回 run など) の場合でも `all_after_inherit.json` は `all.json` と同件数で書き出され、後段は影響なし
+
+**Why**: 14 日ウィンドウを 14 日以内に複数回 collect する運用が想定されるため、過去取得済みの商品を再判定するのは Sonnet コストの無駄。`collect.js` 段階で重複排除すると `count_total ≥ 3` の集計基準が崩れるため (差分期間しか集計に入らなくなる)、Sonnet コストが大きい第 4 段階で「過去判定の引き継ぎ」として処理する。
 
 ##### ステップ 4: progress.json 初期化
 
@@ -737,7 +765,8 @@ visual_extraction/visual_full.json (第 6 段階への入力)
 | vocab 累積 | スクリプト (`extract_unique_vocab.js`) | `chunks_normalized/` | `vocab/vocab_after_chunk_NN.json` |
 | 結合 | Node ワンライナー | `chunks_normalized/` | `structured_full.json` |
 | 視覚属性抽出 画像 DL | スクリプト (`download_item_thumbnails.js`) | `structured_full.json` + 第 1 段階生データ | `image_review/images/{rowIndex}.webp` (既存なら skip、画像除外と共用) |
-| 視覚属性抽出 バッチ分割 | スクリプト (`build_visual_extraction_batches.js`) | `structured_full.json` + 画像ディレクトリ | `visual_extraction/batches/batch_NNN.json` (50 件/バッチ) |
+| 視覚属性抽出 過去判定引き継ぎ (任意) | スクリプト (`inherit_visual_extraction.js`) | `structured_full.json` + 過去 run の `visual_extraction/visual_full.json` | `structured_full_after_inherit.json` (未判定) + `visual_extraction/results/visual_batch_inherited.json` (引き継ぎ分) |
+| 視覚属性抽出 バッチ分割 | スクリプト (`build_visual_extraction_batches.js`) | `structured_full_after_inherit.json` (引き継ぎを実行しない場合は `structured_full.json`) + 画像ディレクトリ | `visual_extraction/batches/batch_NNN.json` (50 件/バッチ) |
 | 視覚属性抽出 プロンプト組立 | スクリプト (`build_visual_extraction_prompt.js`) | `visual_extraction_prompt.md` + バッチ JSON + 累積 vocab | `visual_extraction/prompts/prompt_batch_NNN.md` |
 | 視覚属性抽出 | Sonnet agent (画像 + タイトル) | プロンプト + 画像 webp | `visual_extraction/results/visual_batch_NNN.json` |
 | 視覚属性結合 | Node ワンライナー | `visual_extraction/results/` | `visual_extraction/visual_full.json` (第 6 段階への入力) |
@@ -1107,15 +1136,36 @@ node research/download_item_thumbnails.js \
   research/runs/<ts>/image_review/images
 ```
 
+#### 過去判定の引き継ぎ (inherit_visual_extraction.js、任意)
+
+同じ商品 ID (mXXX) を 2 回 Sonnet 視覚属性抽出するのは Sonnet コストの無駄なため、`structured_full.json` から **過去 run の `visual_extraction/visual_full.json` で判定済みの行** を切り離し、Sonnet 判定対象を未判定 items に絞る。
+
+```bash
+node research/inherit_visual_extraction.js research/runs/<ts>
+```
+
+- 入力: `structured_extraction/structured_full.json` (5-2 完了後)
+- 出力 (どちらも既存時はエラー終了):
+  - `structured_extraction/structured_full_after_inherit.json` (未判定 items、配列、後段バッチ分割の入力)
+  - `visual_extraction/results/visual_batch_inherited.json` (引き継いだ判定、`visual_batch_NNN.json` と同じトップレベル配列フォーマット、後段「バッチ結果の結合」のワンライナーが自動的に拾う)
+- 過去 run の自動検出: `research/runs/*/visual_extraction/visual_full.json` が存在する run のうち、現在 run と同名でないものを新しい順に走査、最初に id 一致した判定を採用 (= 重複時は新しい run の判定を優先)
+- 明示指定: `--from research/runs/<prev-ts>` (複数指定可)
+- 過去判定が 0 件 (= 初回 run など) の場合でも `structured_full_after_inherit.json` は `structured_full.json` と同件数で書き出され、後段は影響なし
+
 #### バッチ分割 (build_visual_extraction_batches.js)
 
-`structured_full.json` を 50 件ずつに分割し、各行に画像絶対パスと現在属性を埋めたバッチ JSON を生成する。
+`structured_full.json` (引き継ぎを実行した場合は `structured_full_after_inherit.json`) を 50 件ずつに分割し、各行に画像絶対パスと現在属性を埋めたバッチ JSON を生成する。
 
 ```bash
 node research/build_visual_extraction_batches.js \
-  research/runs/<ts>/structured_extraction/structured_full.json \
+  research/runs/<ts>/structured_extraction/structured_full_after_inherit.json \
   research/runs/<ts>/image_review/images \
   research/runs/<ts>
+# 引き継ぎを実行していない場合は structured_full.json を渡す:
+# node research/build_visual_extraction_batches.js \
+#   research/runs/<ts>/structured_extraction/structured_full.json \
+#   research/runs/<ts>/image_review/images \
+#   research/runs/<ts>
 ```
 
 出力: `research/runs/<ts>/visual_extraction/batches/batch_NNN.json`
@@ -1479,12 +1529,14 @@ research/runs/YYYY_MM_DD_HH_MM/                   # 1 回のリサーチ run の
 │   └── exclusion_stats.md
 ├── image_review/                                 # 第 4 段階画像除外の出力先 (images/ サブディレクトリは第 5 段階の視覚属性抽出と共用)
 │   ├── all.json                                  #   [第 4 段階] unflagged 全件 (rowIndex / title / thumbnail_url / image_path)
+│   ├── all_after_inherit.json                    #   [第 4 段階] (任意) inherit_image_review.js が出力する未判定 items (バッチ分割の入力)
 │   ├── batches/                                  #   [第 4 段階] 50 件 / バッチ
 │   │   └── batch_NNN.json
 │   ├── images/                                   #   [第 4 段階で DL、第 5 段階の視覚属性抽出も同ディレクトリを参照]
 │   │   └── {rowIndex}.webp                       #     thumbnail を webp で保存、両段階で共用 (再 DL を避けるため)
 │   ├── results/                                  #   [第 4 段階] Sonnet Agent 生出力 (不変、1 バッチ単位で逐次保存)
-│   │   └── batch_NNN_result.json
+│   │   ├── batch_NNN_result.json                 #     今回 run の Sonnet 判定結果 (NNN はバッチ番号)
+│   │   └── inherited_result.json                 #     (任意) inherit_image_review.js が過去 run から引き継いだ判定
 │   ├── progress.json                             #   [第 4 段階] 中断再開管理 (共通原則 2 のスキーマ: stage / completed_units / total_units / last_error)
 │   ├── judgments.json                            #   [第 4 段階] 全件統合 + verdict + reason (不変、監査用)
 │   └── filtered_unflagged.json                   #   [第 4 段階] verdict ∈ {keep, unclear} のみ (第 5 段階の入力)
@@ -1506,7 +1558,8 @@ research/runs/YYYY_MM_DD_HH_MM/                   # 1 回のリサーチ run の
 │   │   └── vocab_after_chunk_NN.json             #     次 chunk の agent に渡す前段語彙
 │   ├── prompts/                                  #   各 chunk 用の結合済みプロンプト
 │   │   └── prompt_for_chunk_NN.md                #     構造化抽出プロンプト本体 + 前段語彙セクション
-│   └── structured_full.json                      #   全 chunks_normalized/ を結合した中間成果物
+│   ├── structured_full.json                      #   全 chunks_normalized/ を結合した中間成果物
+│   └── structured_full_after_inherit.json        #   (任意) inherit_visual_extraction.js が出力する未判定 items のみ
 ├── visual_extraction/                            # 第 5 段階 視覚属性抽出 (画像 + Sonnet)
 │   ├── progress.json                             #   [5-3] 中断再開管理 (共通原則 2 のスキーマ、completed_units はバッチ番号)
 │   ├── batches/                                  #   50 件 / バッチ
@@ -1514,7 +1567,8 @@ research/runs/YYYY_MM_DD_HH_MM/                   # 1 回のリサーチ run の
 │   ├── prompts/                                  #   各バッチ用の結合済みプロンプト
 │   │   └── prompt_batch_NNN.md                   #     visual_extraction_prompt.md 本体 + vocab + バッチパス
 │   ├── results/                                  #   Sonnet agent 生出力 (不変)
-│   │   └── visual_batch_NNN.json
+│   │   ├── visual_batch_NNN.json                 #     今回 run の Sonnet 判定結果 (NNN はバッチ番号)
+│   │   └── visual_batch_inherited.json           #     (任意) inherit_visual_extraction.js が過去 run から引き継いだ判定
 │   └── visual_full.json                          #   全 results/ を結合した最終成果物 (第 6 段階への入力)
 └── identity_resolution/                          # 第 6 段階 同一商品判定
     ├── progress.json                             #   [6-2] 中断再開管理 (共通原則 2 のスキーマ、completed_units は groupId)
@@ -1548,6 +1602,7 @@ research/_image_download.js                                    # 第 4 段階の
 research/download_image_review_thumbnails.js                   # 第 4 段階の画像除外 画像 DL CLI (_image_download.js の薄いラッパー)
 research/image_exclusion_prompt.md                             # 第 4 段階の画像除外 Sonnet Agent に渡すプロンプト
 research/aggregate_image_review.js                             # 第 4 段階の画像除外 集計 + filtered_unflagged.json 生成
+research/inherit_image_review.js                               # 第 4 段階の画像除外 過去 run の判定結果引き継ぎ (任意)
 research/structured_extraction_prompt.md                       # 第 5 段階 構造化抽出 (5-1) agent に渡すプロンプト
 research/split_chunks_for_extraction.js                        # 第 5 段階 入力 TSV 分割スクリプト
 research/build_chunk_prompt.js                                 # 第 5 段階 chunk N (N >= 1) 用プロンプト組立 (前段語彙整合セクション追加)
@@ -1557,6 +1612,7 @@ research/filter_normalize_map.js                               # 第 5 段階 no
 research/apply_normalize_map.js                                # 第 5 段階 normalization 適用
 research/download_item_thumbnails.js                           # 第 5 段階 視覚属性抽出の前準備: サムネイル一括 DL (image_review と共用ディレクトリ)
 research/build_visual_extraction_batches.js                    # 第 5 段階 視覚属性抽出 バッチ分割 (50 件/バッチ)
+research/inherit_visual_extraction.js                          # 第 5 段階 視覚属性抽出 過去 run の判定結果引き継ぎ (任意)
 research/visual_extraction_prompt.md                           # 第 5 段階 視覚属性抽出 agent に渡すプロンプト本体
 research/build_visual_extraction_prompt.js                     # 第 5 段階 視覚属性抽出 バッチごとのプロンプト組立 (vocab 埋め込み)
 research/build_identity_clusters.js                            # 第 6 段階 工程 6-1 Node 仮クラスタリング

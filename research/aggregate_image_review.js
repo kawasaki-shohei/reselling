@@ -1,5 +1,8 @@
 // 第 4 段階の画像除外: 集計 + 第 5 段階入力生成スクリプト。
-// image_review/results/batch_*_result.json を全件統合して以下を書き出す:
+// image_review/results/ 配下の以下のファイルを全件統合して書き出す:
+//   - batch_NNN_result.json    (Sonnet が判定した今回 run の結果)
+//   - inherited_result.json    (inherit_image_review.js が過去 run から引き継いだ結果、任意)
+// 出力:
 //   - image_review/judgments.json       (全件 + verdict + reason、不変、監査用)
 //   - image_review/filtered_unflagged.json (verdict ∈ {keep, unclear} のみ、第 5 段階の入力)
 //
@@ -24,7 +27,7 @@ const PASS_VERDICTS = new Set(['keep', 'unclear']);
 function collectBatchResults(resultsDir) {
   const files = fs
     .readdirSync(resultsDir)
-    .filter((f) => /^batch_\d+_result\.json$/.test(f))
+    .filter((f) => /^(batch_\d+_result|inherited_result)\.json$/.test(f))
     .sort();
   const items = [];
   for (const f of files) {
