@@ -33,6 +33,13 @@ research/*.json
 research/runs/*
 !research/runs/.gitkeep
 
+# 最安値リサーチの実行出力（各段階の中間・最終成果物。サイズ大・再生成可能）
+cheapest-price-research/runs/*
+!cheapest-price-research/runs/.gitkeep
+
+# 最安値リサーチ contact-sheet-builder.py 用 Python venv (Pillow など)
+cheapest-price-research/.venv/
+
 # リサーチレポート（ひとまず ignore。コミット運用を決めたら外す）
 reports/
 
