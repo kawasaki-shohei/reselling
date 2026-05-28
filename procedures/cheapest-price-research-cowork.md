@@ -47,25 +47,28 @@ CSV (UTF-8、BOM 付き): `cheapest-price-research/runs/<ts>/report.csv`
 | 最安URL | 同一商品の最安値出品 URL |
 | 最安価格 | 同一商品の最安値 (円) |
 | 価格差 | `最安価格 - 対象価格` (負なら対象が高い) |
-| 同一判定理由 | 最終判定 (第 6 段階) の `reason` 文字列 |
-| ステータス | `matched` (同一商品あり) / `no_match` (連続ゼロ閾値または絶対上限に到達) / `error` |
+| 同一判定理由 | 画像最終確認 (第 6 段階) の `reason` 文字列 |
+| ステータス | `matched` (同一商品あり) / `no_match` (絶対上限到達または hasNext=false) / `error` |
 
 このレポートを物販オーナーが見て、出品 CSV の `価格` 列に手書きで反映する。
 
 ## 同一商品判定の前提
 
-メルカリの中国輸入品は、出品者が他出品者通報リスクを避けるためタイトル・画像・説明文を意図的に変えて出品する慣習がある。よって「タイトル文字列の一致」ではなく **実体属性 (色・サイズ・個数・セット数・柄・素材・用途) の一致** で同一商品を判定する。
+メルカリの中国輸入品は、出品者が他出品者通報リスクを避けるためタイトル・画像・説明文を意図的に変えて出品する慣習がある。よって「タイトル文字列の一致」ではなく **実体属性の一致** で同一商品を判定する。
 
-別商品扱いになる軸 (一般則):
+別商品扱いになる軸 (7 軸):
 
-| 軸 | 例 |
-|---|---|
-| 色 | 白 / 黒 / ベージュ / ブラウン / シルバー / ゴールド 等 |
-| サイズ | S / M / L / XL、A3 / A4 / B4、80×120、25cm 等 |
-| 個数・セット数・容量 | 2個セット / 5枚セット / 100枚 / 500g 等 |
-| 柄 | 無地 / 花柄 / チェック / 迷彩 等 |
-| 素材 | 本革 / 合皮 / ナイロン / ポリエステル 等 |
-| 用途・機能 | ショルダーバッグ / トートバッグ / クラッチバッグ 等 |
+| 軸 | 説明 | 例 |
+|---|---|---|
+| `category` | 粗ジャンル | トートバッグ / サングラス / ロングリード |
+| `subcategory` | 用途・機能修飾を含む細名 | マザーズバッグ / ウェリントン型 / 訓練用 |
+| `color` | 色 (配列) | `["黒"]` / `["ブラック", "白"]` |
+| `size` | サイズ | A3 / A4 / B4、S / M / L、80×120、25cm |
+| `quantity` | 個数・セット数・容量 | 1個 / 2個セット / 100枚 / 500g |
+| `pattern` | 柄 | 無地 / 花柄 / チェック / 迷彩 / ひし形キルティング |
+| `material` | 素材 | 本革 / 合皮 / ナイロン / ポリエステル / プラスチック |
+
+判定不能な軸は null (color は空配列 `[]`)。後段の機械照合で「unknown は通す」扱いになる。
 
 実例集: [`docs/research/mercari/judgment_examples/`](../docs/research/mercari/judgment_examples/) を必ず参照する (判定例ファイルが無い軸でも上表の一般則は適用)。
 
@@ -102,21 +105,22 @@ Agent 起動後、毎回以下をチェックする:
 
 ## Agent 運用の共通原則
 
-Sonnet Agent を起動する全工程 (第 2 段階キーワード生成 / 第 4 段階 1 次フィルタ / 第 6 段階最終判定) は本原則に従う。Cowork は Opus 4.7 [1m] 親セッションから Sonnet サブエージェントを `subagent_type=general-purpose, model=sonnet` で起動できる (検証済み)。
+Sonnet Agent を起動する全工程 (第 2 段階キーワード生成 / 第 3 段階対象属性抽出 / 第 5 段階候補属性抽出 / 第 6 段階画像最終確認) は本原則に従う。Cowork は Opus 4.7 [1m] 親セッションから Sonnet サブエージェントを `subagent_type=general-purpose, model=sonnet` で起動できる (検証済み)。
 
 ### 原則 1: 1 Agent あたりの担当数
 
 | 段階 | 1 Agent の担当 | 並列 |
 |---|---|---|
-| 第 2 段階 キーワード生成 | 20 件 (1 Agent で全件、1 chunk) | - |
-| 第 4 段階 1 次フィルタ | 1 シート = 最大 20 件 (1 商品 1 バッチあたり最大 3 Agent、順次起動) | 禁止 |
-| 第 6 段階 最終判定 | 1 候補 (順次起動、`sameProduct=true` でループ早期終了) | 禁止 |
+| 第 2 段階 キーワード生成 | 20 件 (1 Agent で全件) | - |
+| 第 3 段階 対象属性抽出 | 20 件 (1 Agent で全件) | - |
+| 第 5 段階 候補属性抽出 | 1 バッチ = 50 件 (1 商品 1 バッチあたり 1 Agent、順次起動) | 禁止 |
+| 第 6 段階 画像最終確認 | 1 候補 (順次起動、`sameProduct=true` で早期終了) | 禁止 |
 
 並列起動は禁止 (使用量制限を一気に消費するため)。
 
 ### 原則 2: バッチ逐次保存 (中断耐性の要)
 
-Agent プロンプトには **「1 結果完了ごとに即 Write、まとめて一括書き出しは禁止」** を必ず明記する。併せて **なぜ逐次保存が必要か (中断で判定がロストする、親は書き出されたファイルしか見ない)** を Agent 自身に理由として伝える。これを書かないと、Agent が効率化の名目で「まとめて書く」判断をしかねない。
+Agent プロンプトには **「1 結果完了ごとに即 Write、まとめて一括書き出しは禁止」** を必ず明記する。併せて **なぜ逐次保存が必要か (中断で判定がロストする、親は書き出されたファイルしか見ない)** を Agent 自身に理由として伝える。
 
 ### 原則 3: Agent 完了報告を鵜呑みにしない (実ファイル検証必須)
 
@@ -149,8 +153,9 @@ SendMessage({
 | 段階 | 確認ポイント |
 |---|---|
 | 第 2 段階 キーワード生成 | 5〜10 件抜粋して「商品名 → キーワード」の対応 (色・個数・サイズの抜けが無いか、修飾語の混入が無いか) |
-| 第 4 段階 1 次フィルタ | シート 1 の結果を実物画像と照合 (明らかな別商品が混入していないか、明らかな同一商品を取りこぼしていないか) |
-| 第 6 段階 最終判定 | 最初の判定の `reason` を確認 (判定根拠が空・形式不備でないか、判定軸を実際に照合しているか) |
+| 第 3 段階 対象属性抽出 | 5〜10 件抜粋して 7 軸属性ラベルの妥当性 (画像で判定した色が抜けていないか、null 多発の軸があるか) |
+| 第 5 段階 候補属性抽出 | バッチ 1 の結果を実物画像と照合 (画像優先原則が機能しているか、明らかに違う属性付与がないか) |
+| 第 6 段階 画像最終確認 | 最初の判定の `sameProduct` と `reason` (判定根拠が空・形式不備でないか) |
 
 ### 原則 6: 親 Cowork セッションは軽作業に徹する
 
@@ -171,7 +176,7 @@ SendMessage({
 ### 書く目的
 
 - 別のセッションが後から run の経緯を追えるようにする (transcripts は持続しない、commit messages では細かすぎる)
-- 手順書 / スクリプト / プロンプト雛形の改善候補を蓄積する (実運用で発覚した問題は次 run までに本手順書へ反映するか、次 run でも対処できるようにする)
+- 手順書 / スクリプト / プロンプト雛形の改善候補を蓄積する
 - 過去 run との件数比較で母集団変化・プロンプト変更の影響を追跡する
 
 ### 書くタイミング
@@ -182,20 +187,19 @@ SendMessage({
 ### 書く内容 (最低限)
 
 1. **この run の位置づけ**: run_id (`<ts>`)、目的、対象データ (入力 CSV のパス・件数 = 20)、進捗状況、前 run との関係
-2. **件数フロー実績**: 各段階の入力 → 出力件数の表 (商品数 / 1 次通過候補数 / 最終 matched 件数 / no_match 件数。前 run との比較を含めると尚良)
+2. **件数フロー実績**: 各段階の入力 → 出力件数の表 (商品数 / 候補属性抽出バッチ数 / 機械照合通過数 / 画像最終確認 matched 件数 / no_match 件数)
 3. **手順書記載からの逸脱点**: 実運用で調整した部分、その背景・対処・教訓
-4. **新規発覚した問題と対処**: バグ・運用ミス・想定外の挙動 (発覚 → 検証 → 対処 → 以降の運用変更 → 教訓)
+4. **新規発覚した問題と対処**: バグ・運用ミス・想定外の挙動
 5. **実行スケジュール**: 各段階の開始・完了時刻 (JST)
 6. **手順書への反映候補**: 次 run までに本手順書 / スクリプト / プロンプト雛形に反映すべき項目
-7. **ファイル参照クイックリンク**: 主要出力ファイル (`source.csv` / `keywords.csv` / `target_detail/` / 代表的な `items/{商品番号}/result.json` / `report.csv`) へのリンク
+7. **ファイル参照クイックリンク**
 
 ### 書き方
 
-- **独立して読めるように書く**。コンテキスト (これまでのセッション履歴) がない前提で理解できるようにする
-- 節タイトル (`## 1.`、`### 3.1` のように番号付き) で構造化し、項目間で参照しやすくする
+- **独立して読めるように書く**
+- 節タイトル (`## 1.`、`### 3.1`) で構造化
 - 過去 run の `run_notes.md` と相互リンクを貼る
-- 件数・時刻・Agent 数・kept 数 等の具体的な数値を記録する (主観的感想は控え、事実と教訓を中心に書く)
-- 検証スクリプトを書いた場合はそのままコードブロックで貼る (次 run で再利用しやすい)
+- 件数・時刻・Agent 数・kept 数 等の具体的な数値を記録する
 
 ---
 
@@ -205,12 +209,11 @@ SendMessage({
 
 | プレースホルダ | フォーマット | 例 | 出所 |
 |---|---|---|---|
-| `<ts>` | `YYYY_MM_DD_HH_MM` (JST) | `2026_05_27_09_00` | run 開始時の JST 時刻。一度決めたら同セッション中は変えない |
+| `<ts>` | `YYYY_MM_DD_HH_MM` (JST) | `2026_05_28_09_00` | run 開始時の JST 時刻 |
 | `{商品番号}` | 入力 CSV の `商品番号` 列の値そのまま | `FD02701` | 入力 CSV |
 | `{id}` | Mercari item id (`m` + 数字 11 桁) | `m92167660103` | Mercari API レスポンスの `item.id` |
-| `page_NN` | `page_` + 2 桁ゼロ埋め | `page_01`, ..., `page_05` | 第 3 段階のバッチ番号 (1〜5、絶対上限 5) |
-| `sheet_M` | `sheet_` + 1 桁 | `sheet_1`, `sheet_2`, `sheet_3` | 第 4 段階のシート番号 (1〜3、最大) |
-| `{rank}` | 2 桁ゼロ埋め | `01`〜`60` | 同バッチ内の価格昇順順位 (1〜60、itemBrand 除外後) |
+| `page_NN` | `page_` + 2 桁ゼロ埋め | `page_01`, ..., `page_05` | 第 4 段階のバッチ番号 (1〜5、絶対上限 5) |
+| `{rank}` | 2 桁ゼロ埋め | `01`〜`50` | 同バッチ内の価格昇順順位 (1〜50、itemBrand 除外後) |
 
 ---
 
@@ -220,37 +223,37 @@ SendMessage({
 reselling/
 ├── cheapest-price-research/                          # 本手順書の専用ディレクトリ
 │   ├── cheapest-price-search.js                      #   検索 API (javascript_tool 用)
-│   ├── contact-sheet-builder.py                      #   コンタクトシート生成 (Python + Pillow)
-│   ├── mercari-item-detail.js                        #   商品詳細 (javascript_tool 用)
-│   ├── download-thumbnails.js                        #   サムネ並列 DL (Node CLI)
-│   ├── run-python.sh                                 #   Python ラッパー (macOS/Linux 吸収)
+│   ├── mercari-item-detail.js                        #   商品詳細 API (javascript_tool 用)
+│   ├── attribute-match.js                            #   7 軸機械照合 (Node CLI)
 │   ├── prompts/
 │   │   ├── keyword-generation.md                     #   第 2 段階 プロンプト
-│   │   ├── primary-filter.md                         #   第 4 段階 プロンプト
-│   │   └── final-judgment.md                         #   第 6 段階 プロンプト
+│   │   ├── target-attribute-extraction.md            #   第 3 段階 プロンプト
+│   │   ├── candidate-attribute-extraction.md         #   第 5 段階 プロンプト
+│   │   └── final-judgment.md                         #   第 6 段階 プロンプト (画像最終確認用)
 │   └── runs/
-│       └── <ts>/                                     #   1 セッション = 1 run (例: 2026_05_27_09_00)
+│       └── <ts>/                                     #   1 セッション = 1 run
 │           ├── source.csv                            #     物販オーナー提供の 20 件マスター CSV (不変)
 │           ├── keywords.csv                          #     第 2 段階出力 (4 列、不変)
+│           ├── target_attributes.json                #     第 3 段階出力 (20 商品集約、不変)
 │           ├── target_detail/
 │           │   └── {商品番号}.json                   #     第 1 段階出力 (商品ごと、不変)
 │           ├── target_images/
 │           │   └── {商品番号}/
-│           │       └── photo_1.jpg                   #     第 1 段階で DL した対象画像 (photos[0])
+│           │       └── photo_N.jpg                   #     第 1 段階で DL した対象画像 (photos 全枚数)
 │           ├── items/
 │           │   └── {商品番号}/
 │           │       ├── rivals/
-│           │       │   └── page_NN.json              #     第 3 段階出力 (バッチごと、不変)
+│           │       │   └── page_NN.json              #     第 4 段階出力 (バッチごと、不変)
 │           │       ├── thumbs/
 │           │       │   └── page_NN/{rank}.jpg        #     サムネ DL
-│           │       ├── sheets/
-│           │       │   └── page_NN_sheet_M.png       #     第 4 段階入力 (コンタクトシート)
-│           │       ├── primary_filter/
-│           │       │   └── page_NN.json              #     第 4 段階出力 (1 次通過候補)
+│           │       ├── candidate_attributes/
+│           │       │   └── page_NN.json              #     第 5 段階 5-2 出力 (Sonnet、不変)
+│           │       ├── matched_candidates/
+│           │       │   └── page_NN.json              #     第 5 段階 5-3 出力 (機械照合、不変)
 │           │       ├── candidate_detail/
-│           │       │   └── {id}.json                 #     第 5 段階出力 (候補詳細、不変)
+│           │       │   └── {id}.json                 #     第 6 段階で取得 (一致候補のみ、不変)
 │           │       ├── candidate_images/
-│           │       │   └── {id}/photo_1.jpg          #     第 5 段階で DL した候補画像
+│           │       │   └── {id}/photo_N.jpg          #     第 6 段階で DL (一致候補のみ、photos 全枚数)
 │           │       ├── final_judgment/
 │           │       │   └── {id}.json                 #     第 6 段階出力 (判定結果、不変)
 │           │       └── result.json                   #     最終結果 (最安値 1 件 or no_match)
@@ -258,7 +261,7 @@ reselling/
 │           └── run_notes.md                          #   本 run の実行結果・気づき・逸脱点
 │
 ├── procedures/cheapest-price-research-cowork.md      # 本手順書
-└── listings/runs/YYYY_MM_DD/                         # 出品手順 (listing-cowork.md) で使う、最安値リサーチの後段
+└── listings/runs/YYYY_MM_DD/                         # 出品手順 (listing-cowork.md) で使う
 ```
 
 `cheapest-price-research/runs/<ts>/` 以下のファイルは全て不変。再生成は新しい run (新しい `<ts>`) を作る。
@@ -277,30 +280,7 @@ Mercari API は DPoP 認証付きで Claude in Chrome の javascript_tool (≒ `
 2. Cowork セッション開始
 3. 各 javascript_tool 実行時に `window.__ITEM_DETAIL_INPUT__` や `window.__CHEAPEST_BATCH_INPUT__` を事前に設定してから本実装スクリプトを実行
 
-実装スクリプトは Claude Code と同じ `cheapest-price-research/*.js` を使う (動作確認済み)。
-
-### Python 実行 (`run-python.sh`)
-
-`contact-sheet-builder.py` (Python + Pillow) はラッパー経由で起動:
-
-```bash
-cheapest-price-research/run-python.sh cheapest-price-research/contact-sheet-builder.py \
-  --thumbs-dir cheapest-price-research/runs/<ts>/items/{商品番号}/thumbs/page_01 \
-  --rivals-json cheapest-price-research/runs/<ts>/items/{商品番号}/rivals/page_01.json \
-  --output-dir cheapest-price-research/runs/<ts>/items/{商品番号}/sheets \
-  --page 1
-```
-
-Cowork サンドボックスは Linux + system Python 3.10 + Pillow 12.1 がプリインストール済み。ラッパーが自動で system python3 を選ぶ。
-
-ローカル macOS では `.venv` が必要 (本実装の補足):
-
-```bash
-python3 -m venv cheapest-price-research/.venv
-cheapest-price-research/.venv/bin/pip install -r cheapest-price-research/requirements.txt
-```
-
-ただし Cowork サンドボックス内では venv 不要。
+実装スクリプトは Claude Code と同じ `cheapest-price-research/*.js` を使う。
 
 ---
 
@@ -308,48 +288,51 @@ cheapest-price-research/.venv/bin/pip install -r cheapest-price-research/require
 
 ```
 0. セッション準備
-   - 物販オーナーから 20 件分のマスター CSV を受け取る (パスをチャットで指定してもらう)
+   - 物販オーナーから 20 件分のマスター CSV を受け取る
    - <ts> 採番 (JST `YYYY_MM_DD_HH_MM`)
    - cheapest-price-research/runs/<ts>/ 作成、マスター CSV を source.csv にコピー
    - https://jp.mercari.com に Chrome でアクセス済み確認 (DPoP セッション確立)
 ↓
 1. 対象商品 詳細取得 (target_detail_fetch_step)
    - items/get API batch で 20 件の target_detail を取得
-   - 各商品の photos[0] を curl で target_images/{商品番号}/photo_1.jpg に保存
+   - 各商品の photos[] 全枚数を curl で target_images/{商品番号}/photo_N.jpg に保存
      ↓ target_detail/{商品番号}.json (20 ファイル)
-     ↓ target_images/{商品番号}/photo_1.jpg (20 ファイル)
+     ↓ target_images/{商品番号}/photo_N.jpg (商品ごとに M 枚)
 ↓
 2. キーワード生成 (keyword_generation_step)
    - Sonnet サブエージェント 1 体起動
    - 入力: target_detail/ + target_images/ (実物データ)
-   - 出力: keywords.csv (商品番号→検索キーワード、4 列)
-   - Agent 01 完了直後にスポットチェック (5〜10 件)
+   - 出力: keywords.csv (4 列)
 ↓
-3〜6. 最安値探索ループ (商品ごと、順次)
+3. 対象商品 属性抽出 (target_attribute_extraction_step)
+   - Sonnet サブエージェント 1 体起動
+   - 入力: target_detail/ (title + description) + target_images/ (photos 全枚数)
+   - 出力: target_attributes.json (商品番号→ 7 軸属性)
+↓
+4〜6. 最安値探索ループ (商品ごと、順次)
      1 商品の流れ:
-       (a) 検索 API でバッチ取得 (価格昇順 60 件)             [第 3 段階]
-            ↓
-       (b) コンタクトシート 1 次フィルタ (最大 3 シート)      [第 4 段階]
-            ↓
-       (c) 1 次通過候補を価格昇順で詳細取得                  [第 5 段階]
-            ↓
-       (d) 対象詳細 vs 候補詳細 で同一商品判定               [第 6 段階]
-            ↓
-       (e) 判定結果による分岐:
-            sameProduct=true  → そのまま最安値確定 → 次の商品へ
-            sameProduct=false → 次の候補へ ((c) に戻る)
-            全候補 false     → 次バッチへ ((a) に戻る、page+1)
-       (f) 打ち切り条件:
-            連続 3 バッチで 1 次通過候補がゼロ → no_match で次の商品へ
-            5 バッチ取得しても確定しない (絶対上限 300 件) → no_match で次の商品へ
-            すぐ hasNext=false で次バッチが無い → no_match で次の商品へ
-     ↓ cheapest-price-research/runs/<ts>/items/{商品番号}/result.json (20 ファイル)
+       (a) 検索 API でバッチ取得 (価格昇順 50 件)             [第 4 段階]
+            ↓ rivals/page_NN.json
+       (b) サムネ画像 DL (50 枚)
+            ↓ thumbs/page_NN/{rank}.jpg
+       (c) 候補 50 件の属性抽出 (Sonnet 1 体)                 [第 5 段階 5-2]
+            ↓ candidate_attributes/page_NN.json
+       (d) 対象属性 vs 各候補属性で 7 軸機械照合 (Node)        [第 5 段階 5-3]
+            1 軸でも明らかに違えば外す、unknown は通す
+            ↓ matched_candidates/page_NN.json (rank 配列、価格昇順)
+       (e) 一致候補があれば、価格昇順先頭から順に画像最終確認  [第 6 段階]
+            sameProduct=true → 最安値確定、次の商品へ
+            sameProduct=false → 同バッチ次の一致候補で確認
+       (f) 一致候補ゼロ or 全部 false → 次バッチ (page+1)
+       (g) 打ち切り条件:
+            5 バッチ取得 (250 件) で未確定 → no_match
+            hasNext=false で次バッチが無い → no_match
+     ↓ items/{商品番号}/result.json (20 ファイル)
 ↓
 7. 最安値抽出 + レポート化 (cheapest_export_step)
    - 20 件の result.json を集約
-   - cheapest-price-research/runs/<ts>/report.csv (UTF-8 BOM 付き、8 列)
-   - run_notes.md を書く
-   - 物販オーナーへ報告 (report.csv のパス + サマリ)
+   - report.csv (UTF-8 BOM 付き、8 列) + run_notes.md
+   - 物販オーナーへ報告
 ```
 
 ---
@@ -366,7 +349,7 @@ cheapest-price-research/.venv/bin/pip install -r cheapest-price-research/require
 |---|---|
 | 入力 | `cheapest-price-research/runs/<ts>/source.csv` (物販オーナー提供の 20 件、3 列: 商品番号 / 商品名 / メルカリURL) |
 | 出力 | `cheapest-price-research/runs/<ts>/target_detail/{商品番号}.json` (1 商品 = 1 ファイル、不変) |
-| 出力 | `cheapest-price-research/runs/<ts>/target_images/{商品番号}/photo_1.jpg` (photos[0] のローカル DL、第 2 / 第 4 / 第 6 段階で使用) |
+| 出力 | `cheapest-price-research/runs/<ts>/target_images/{商品番号}/photo_N.jpg` (photos 全枚数、第 2 / 第 3 / 第 6 段階で使用) |
 
 ### API 仕様
 
@@ -387,8 +370,8 @@ cheapest-price-research/.venv/bin/pip install -r cheapest-price-research/require
 | `description` | 商品説明文 (全文、truncate なし) |
 | `photos` | 商品画像 URL の配列 (全枚数、フル解像度) |
 | `thumbnails` | サムネ URL の配列 |
-| `seller` | 出品者情報 `{ id, name, num_sell_items, ratings, ... }` |
-| `item_condition` | 商品の状態 `{ id, name }` (例: `{ id: 1, name: "新品、未使用" }`) |
+| `seller` | 出品者情報 |
+| `item_condition` | 商品の状態 |
 | `shipping_payer` / `shipping_method` / `shipping_from_area` / `shipping_duration` | 配送関連 |
 | `item_category` / `item_category_ntiers` | カテゴリ |
 | `colors` / `item_attributes` | 色・属性 |
@@ -405,17 +388,14 @@ Chrome を `https://jp.mercari.com` の任意のページに移動して 2〜3 �
 実装スクリプト: `cheapest-price-research/mercari-item-detail.js` (javascript_tool 用、batch 入力対応)。
 
 ```js
-// 入力 (window.__ITEM_DETAIL_INPUT__ を javascript_tool でセット)
 window.__ITEM_DETAIL_INPUT__ = {
   items: [
     { productCode: "FD00101", itemId: "m92167660103" },
     { productCode: "FD00301", itemId: "m85899014828" },
-    // ... 入力 CSV 全 20 件 (URL からの itemId 抽出は呼び出し側で行う)
+    // ... 入力 CSV 全 20 件
   ]
 };
 ```
-
-`mercari-item-detail.js` を javascript_tool で実行。内部で **10 並列** fetch。
 
 戻り値:
 
@@ -427,9 +407,7 @@ window.__ITEM_DETAIL_INPUT__ = {
   "failed": 1,
   "results": [
     { "productCode": "FD00101", "itemId": "m...", "status": "ok",
-      "http": 200, "data": { /* items/get の data フィールド全体 */ } },
-    { "productCode": "FD00...", "itemId": "m...", "status": "error",
-      "http": 404, "error": "..." }
+      "http": 200, "data": { /* items/get の data フィールド全体 */ } }
   ]
 }
 ```
@@ -438,19 +416,15 @@ window.__ITEM_DETAIL_INPUT__ = {
 
 戻り値の `results[]` を商品ごとに `cheapest-price-research/runs/<ts>/target_detail/{商品番号}.json` に書き出す (各ファイルには `data` フィールド本体を保存)。
 
-#### 1-4. 対象画像 photos[0] をローカル DL
+#### 1-4. 対象画像 photos[] 全枚数をローカル DL
 
-各商品の `data.photos[0]` URL を `bash` + `curl` で `cheapest-price-research/runs/<ts>/target_images/{商品番号}/photo_1.jpg` に保存。後段の第 2 段階 (キーワード生成 Agent が画像を Read)、第 4 段階 (1 次フィルタ Agent が画像を Read)、第 6 段階 (最終判定 Agent が画像を Read) で使う。
+各商品の `data.photos[]` URL を全件 `bash` + `curl` で `cheapest-price-research/runs/<ts>/target_images/{商品番号}/photo_N.jpg` (N=1..M) に保存。後段の第 2 段階 (キーワード生成)、第 3 段階 (対象属性抽出)、第 6 段階 (画像最終確認) で使う。
 
 #### 1-5. 検証
 
 - 出力 JSON ファイルの個数 = 入力 CSV の商品数 (20、失敗分があれば error フィールドで把握)
 - 各 JSON が parse 可能、`name` `price` `description` `photos` が空でない
-- 各 photo_1.jpg が DL 完了 (file size > 0)
-
-### 既存資産
-
-- `cheapest-price-research/mercari-item-detail.js` (batch 入力 / 並列 10 / DPoP 認証込み)
+- 各 photo_N.jpg が DL 完了 (file size > 0)、枚数 = photos[].length
 
 ---
 
@@ -458,69 +432,113 @@ window.__ITEM_DETAIL_INPUT__ = {
 
 各商品について、第 1 段階で取得した **実物データ (タイトル + 説明文 + photos[0] 画像)** から Sonnet サブエージェントで検索キーワードを生成する。
 
-**CSV 商品名は参照しない** (第 1 段階の註と同様、信頼できない場合があるため URL ベースの実物データを正とする)。
+**CSV 商品名は参照しない** (信頼できない場合があるため URL ベースの実物データを正とする)。
 
 ### 目的
 
-第 1 段階の実物データから、検索ヒットを「**対象商品と同一の可能性が高い** ものに絞れるキーワード」を作る。タイトルそのままでは検索ヒットが広すぎる、または不適切な修飾語 (「人気」「おしゃれ」「韓国」等) が混じる。
-
-**商品が特定できる中核名 + 同一商品判定の軸 (色・サイズ・個数等)** に絞ったキーワードを作る。色やサイズや個数の情報は **画像と説明文から判断する** (タイトルに書かれていなくても画像で判明する色などを反映する)。
+第 1 段階の実物データから、検索ヒットを「**対象商品と同一の可能性が高い** ものに絞れるキーワード」を作る。タイトルそのままでは検索ヒットが広すぎる、または不適切な修飾語が混じる。
 
 ### 入出力
 
 | | パス |
 |---|---|
-| 入力 | `cheapest-price-research/runs/<ts>/target_detail/{商品番号}.json` (全 20 商品分) |
-| 入力 | `cheapest-price-research/runs/<ts>/target_images/{商品番号}/photo_1.jpg` (全 20 商品分) |
+| 入力 | `cheapest-price-research/runs/<ts>/target_detail/{商品番号}.json` (全 20 商品) |
+| 入力 | `cheapest-price-research/runs/<ts>/target_images/{商品番号}/photo_1.jpg` (色判定用、photo_1 のみで OK) |
 | 入力 | `cheapest-price-research/runs/<ts>/source.csv` (商品番号一覧の参照用、商品名列は使わない) |
 | 出力 | `cheapest-price-research/runs/<ts>/keywords.csv` (4 列: `商品番号,対象タイトル,メルカリURL,検索キーワード`) |
 
-出力 CSV の 2 列目は CSV 入力の「商品名」ではなく **第 1 段階で取得した実物の `name` (タイトル)** に置き換える (実物を正にする方針の徹底)。
+出力 CSV の 2 列目は CSV 入力の「商品名」ではなく **第 1 段階で取得した実物の `name` (タイトル)** に置き換える。
 
 ### 手順
 
 1. Sonnet サブエージェント (`subagent_type=general-purpose, model=sonnet`) を 1 体起動
-2. プロンプト本文は `cheapest-price-research/prompts/keyword-generation.md` を使う。プロンプトに含めるべき要素:
-   - 絶対禁則 (Agent 運用の共通原則 原則 2)
-   - タスク説明: 中国輸入物販で同一商品の最安値を調査するためのキーワード生成、**実物データ (target_detail + target_images) ベースで作る**
-   - 同一商品判定の前提 (本手順書「## 同一商品判定の前提」と `docs/research/mercari/judgment_examples/README.md` の参照)
-   - 別商品扱いの軸 (色・サイズ・個数・柄・素材・用途) と各軸の例
-   - キーワード生成ルール:
-     - 各商品について `target_detail/{商品番号}.json` を Read し `name` / `description` を参照
-     - 各商品について `target_images/{商品番号}/photo_1.jpg` を Read で画像認識し色・形状・個数を判断
-     - 2〜3 語をスペース区切り
-     - 中核名 (カテゴリ・用途) + 同一商品判定の軸を含める
-     - 修飾語の羅列を避ける (人気・おしゃれ・上品・韓国・男女兼用・春夏・新品 等は基本入れない)
-     - **画像で判明した色をタイトルが省略していても必ずキーワードに含める** (CSV / タイトルだけ見て色を判断しない)
-   - 入力パス: 上記の入出力テーブルに記載
-   - 出力パス: `cheapest-price-research/runs/<ts>/keywords.csv` の絶対パス
-   - 例 (色違い・個数違い・サイズ違いをキーワードに反映する具体例 5〜10 件)
+2. プロンプト本文は `cheapest-price-research/prompts/keyword-generation.md` を使う
 3. Agent 完了後の検証:
    - 出力ファイルが存在
    - 出力 CSV の行数 = 20 + 1 (ヘッダ)
-   - 入力 target_detail / target_images の mtime / size が Agent 起動前と一致
-   - 想定外ファイルが作成されていない
-4. Agent 01 完了直後にスポットチェック (Agent 運用の共通原則 原則 5):
-   - 5〜10 件抜粋して「商品名 → キーワード」の対応を目視確認
-   - 色・個数・サイズの抜けが無いか、修飾語の混入が無いか
-
-### 例
-
-| 実物タイトル + 画像 | 検索キーワード |
-|---|---|
-| `宅配ビニール袋 B4 100枚 新品 テープ付 宅急便 ネコポス ゆうパケット` + 画像が**黒** | `宅配ビニール袋 B4 100枚 黒` (画像で黒と判明、タイトルにない色を反映) |
-| `犬 ロングリード 10m 訓練用 トレーニング 大型犬 中型犬 黒` + 画像が黒 | `ロングリード 10m 黒` |
-| `ハンドバッグ 大容量 黒 韓国 キルティング マザーズバック トートバッグ A4` + 画像が黒のキルティング | `トートバッグ キルティング A4 黒` |
+   - 入力ファイル mtime 不変
+4. Agent 01 完了直後にスポットチェック (5〜10 件)
 
 ---
 
-## 第 3 段階: 検索 API 取得 (rival_search_step)
+## 第 3 段階: 対象商品 属性抽出 (target_attribute_extraction_step)
 
-第 2 段階で生成したキーワードを使い、Mercari 検索 API で**現在販売中の商品を価格昇順で 60 件**取得する。バッチ単位 (1 ページ = 60 件) で動く。
+各対象商品の 7 軸属性を Sonnet サブエージェントで抽出する。後段 (第 5 段階 機械照合) の基準データになる。
 
 ### 目的
 
-最安値候補の母集団を作る。後続の 1 次フィルタに渡す。価格昇順なので、バッチ先頭ほど安い。
+第 1 段階の実物データ (タイトル + 説明文 + photos 全枚数) から、対象商品の 7 軸属性 (category / subcategory / color / size / quantity / pattern / material) を抽出する。
+
+機械照合 (第 5 段階) はこの target_attributes.json を「正」として、各候補の属性と 1 軸ごとに突き合わせる。
+
+### 入出力
+
+| | パス |
+|---|---|
+| 入力 | `cheapest-price-research/runs/<ts>/target_detail/{商品番号}.json` (全 20 商品) |
+| 入力 | `cheapest-price-research/runs/<ts>/target_images/{商品番号}/photo_N.jpg` (全枚数) |
+| 入力 | `cheapest-price-research/runs/<ts>/source.csv` (商品番号一覧の参照用) |
+| 出力 | `cheapest-price-research/runs/<ts>/target_attributes.json` (1 ファイルに 20 商品集約、不変) |
+
+### 7 軸属性の定義
+
+冒頭「## 同一商品判定の前提」で定義した 7 軸 (category / subcategory / color / size / quantity / pattern / material) を抽出する。判定不能な軸は null (color は空配列 `[]`)。
+
+### 画像優先の原則
+
+タイトル/説明文と画像で矛盾があれば画像優先。FD02701 の事例 (タイトル「白」だが画像と description で黒) では `color: ["黒"]` を出す。
+
+### 出力 JSON フォーマット
+
+```json
+{
+  "extractedAt": "2026-05-28T10:00:00+09:00",
+  "products": {
+    "FD00301": {
+      "id": "m85899014828",
+      "name": "犬 ロングリード 10m 訓練用 トレーニング 大型犬 中型犬 黒",
+      "attributes": {
+        "category": "ロングリード",
+        "subcategory": "犬用訓練リード",
+        "color": ["黒"],
+        "size": "10m",
+        "quantity": "1本",
+        "pattern": "無地",
+        "material": "ナイロン"
+      },
+      "reason": "画像で黒・ナイロン製の長尺リードを確認。タイトル・説明文と一致。"
+    }
+  }
+}
+```
+
+### 手順
+
+1. Sonnet サブエージェント (`subagent_type=general-purpose, model=sonnet`) を 1 体起動
+2. プロンプト本文は `cheapest-price-research/prompts/target-attribute-extraction.md` を使う
+3. プロンプトに含めるべき要素:
+   - 絶対禁則
+   - 7 軸属性の定義 + 各軸の例
+   - 画像優先の原則
+   - 判定不能時は null (color は `[]`)
+   - 1 商品判定ごとに即 Write (バッチ逐次保存)
+   - 入力パス / 出力パス (絶対パス)
+4. Agent 完了後の検証:
+   - target_attributes.json が存在
+   - JSON parse 可能、`products` の商品数 = 20
+   - 入力ファイル mtime 不変
+   - 想定外ファイル無し
+5. Agent 01 完了直後にスポットチェック (5〜10 件抜粋して属性ラベルの妥当性を目視)
+
+---
+
+## 第 4 段階: 検索 API 取得 (rival_search_step)
+
+第 2 段階で生成したキーワードを使い、Mercari 検索 API で **現在販売中の商品を価格昇順で 50 件** 取得する。バッチ単位 (1 ページ = 50 件) で動く。
+
+### 目的
+
+最安値候補の母集団を作る。後続の候補属性抽出 + 機械照合に渡す。価格昇順なので、バッチ先頭ほど安い。
 
 ### 検索条件
 
@@ -536,12 +554,9 @@ Mercari 検索 API (`POST https://api.mercari.jp/v2/entities:search`、DPoP 認�
 | `itemConditionId` | `[1]` | 新品・未使用 |
 | `itemTypes` | `['ITEM_TYPE_MERCARI']` | 個人出品 (事業者ショップは除外) |
 | `withItemBrand` | `true` | レスポンスに itemBrand を含める (後段で除外用) |
-| `priceMin` / `priceMax` | `0` / `0` | 指定なし (商品固有キーワードで絞っているため価格帯指定は不要) |
-| `pageSize` | `60` | 1 バッチの件数 |
+| `priceMin` / `priceMax` | `0` / `0` | 指定なし |
+| `pageSize` | `50` | 1 バッチの件数 |
 | `pageToken` | 前バッチの `meta.nextPageToken` (1 ページ目は `''`) | ページネーション |
-| `sizeId` `categoryId` `brandId` `sellerId` ほか | `[]` | 空配列 |
-
-リクエストヘッダ (DPoP 認証含む) と DPoP JWT 生成ロジックは `cheapest-price-research/cheapest-price-search.js` の実装に準拠する。
 
 ### クライアント側フィルタ (取得後)
 
@@ -552,9 +567,9 @@ Mercari 検索 API (`POST https://api.mercari.jp/v2/entities:search`、DPoP 認�
 
 ### 注意: Mercari 検索 API のキーワード挙動
 
-Mercari 検索 API はキーワードを **AND マッチで厳密にフィルタしない** (description も検索対象になっている可能性、または OR 評価)。例: キーワードに「黒」を入れても、上位に白系商品が混じることがある (実測: 「宅配ビニール袋 黒 100枚 B4」で検索しても、rank 1〜8 に白・サイズ違い・枚数違いが残る)。
+Mercari 検索 API はキーワードを **AND マッチで厳密にフィルタしない**。例: キーワードに「黒」を入れても、上位に白系商品が混じることがある。
 
-そのため**キーワードだけで完全な絞り込みは期待できない**。本手順書の設計では、検索 API はあくまで候補母集団を取得する役割で、最終的な絞り込みは第 4 段階 (1 次フィルタ・対象画像と並べて Sonnet 判定) と第 6 段階 (最終判定・説明文 + 全画像で精査) で行う。
+そのため**キーワードだけで完全な絞り込みは期待できない**。本手順書の設計では、検索 API はあくまで候補母集団を取得する役割で、最終的な絞り込みは第 5 段階 (機械照合) と第 6 段階 (画像最終確認) で行う。
 
 ### 出力
 
@@ -563,21 +578,21 @@ Mercari 検索 API はキーワードを **AND マッチで厳密にフィルタ
 ```json
 {
   "page": 1,
-  "fetchedAt": "2026-05-27T09:05:00+09:00",
-  "totalReturned": 60,
-  "totalAfterBrandFilter": 58,
+  "fetchedAt": "2026-05-28T09:05:00+09:00",
+  "totalReturned": 50,
+  "totalAfterBrandFilter": 48,
   "nextPageToken": "...",
   "hasNext": true,
   "items": [
     {
       "rank": 1,
       "id": "m12345",
-      "name": "スタッズベルト V 黒 ロック",
+      "name": "...",
       "price": 980,
       "sellerId": "1234567",
       "updated": 1748000000,
       "url": "https://jp.mercari.com/item/m12345",
-      "thumbnails": ["https://static.mercdn.net/.../photo_1.jpg", "..."]
+      "thumbnails": ["https://static.mercdn.net/.../photo_1.jpg"]
     }
   ]
 }
@@ -589,281 +604,210 @@ Mercari 検索 API はキーワードを **AND マッチで厳密にフィルタ
 
 `cheapest-price-research/cheapest-price-search.js` を javascript_tool で実行 (batch 入力対応)。
 
-入力 (`window.__CHEAPEST_BATCH_INPUT__`、複数商品を 1 回でまとめて投げる batch 形式):
-
-```js
-window.__CHEAPEST_BATCH_INPUT__ = {
-  products: [
-    { productCode: "FD00101", keyword: "スタッズベルト V 黒", page: 1, pageToken: "" },
-    { productCode: "FD00301", keyword: "ロングリード 10m 黒",   page: 1, pageToken: "" },
-    // ... 入力 CSV 全 20 件 or バッチ単位
-  ]
-};
-```
-
-戻り値: `{ fetchedAt, total, succeeded, failed, results: [{ productCode, keyword, page, status, totalReturned, totalAfterBrandFilter, nextPageToken, hasNext, items: [...] }, ...] }`
-
-スクリプトは内部で **商品ごとに 200ms 間隔で順次** fetch する (Mercari 検索 API はキーワード並列でレート制限ヒットの実績があるため)。
-
 ### バッチ取得ループの打ち切り条件
 
 | 条件 | 値 |
 |---|---|
 | **主条件**: 第 6 段階で同一商品マッチ発見 | 早期終了 (最安値確定) |
-| 安全網 1: 連続 3 バッチで 1 次通過候補ゼロ | 打ち切り (`no_match`) |
-| 安全網 2: 5 バッチ取得しても確定しない (絶対上限 300 件) | 打ち切り (`no_match`) |
-| 安全網 3: hasNext=false で次バッチが無い | 打ち切り (`no_match`、市場が小さい商品) |
+| 安全網 1: 5 バッチ取得しても確定しない (絶対上限 250 件) | 打ち切り (`no_match`) |
+| 安全網 2: hasNext=false で次バッチが無い | 打ち切り (`no_match`、市場が小さい商品) |
 
-「1 次通過候補ゼロ」は第 4 段階の出力 (Sonnet が同一候補と判定した index) が空配列のこと。
+注: 旧手順書の「連続 N バッチで 1 次通過候補ゼロ」打ち切り条件は廃止 (1 次フィルタを廃止したため)。
 
 ---
 
-## 第 4 段階: 1 次フィルタ (image_primary_filter_step)
+## 第 5 段階: 候補属性抽出 + 機械照合 (candidate_attribute_match_step)
 
-第 3 段階の 60 件サムネ + タイトル + 対象画像を Sonnet に見せ、「対象商品と同一の可能性あり」な候補の index を返す。**60 件を 20 件 × 最大 3 シートのコンタクトシートに分割**して判定する。
+第 4 段階で取得した 1 バッチ 50 件の候補について、Sonnet で 7 軸属性を抽出し、対象属性と機械照合して一致候補を絞る。
 
-### 設計
+### 設計の背景
 
-| 要素 | 値 |
-|---|---|
-| 1 シートの件数 | 20 件 |
-| シート枚数 | 最大 3 (= 60 件 / 20 件)、件数が少なければ 1〜2 シートで完結 |
-| 1 シートのレイアウト | 5 列 × 4 行 = 20 セル |
-| 1 セルの解像度目安 | 300〜400px (Mercari サムネのネイティブ相当) |
-| Sonnet 呼び出し回数 | シート 1 枚ごと、最大 3 体 |
-| 1 回あたり Sonnet が読む画像数 | 2 (対象画像 + シート画像) |
+旧設計はコンタクトシート画像 (60 件×3 シート) を Sonnet に見せて「対象画像 vs シート画像」を 1 次フィルタしていた。しかし出品者が画像を意図的に変える慣習があるため、画像のテンプレ差で同一商品を取りこぼすケースが発生した (例: サングラス__120 のように、ウェリントン型偏光調光サングラスを同一商品としつつ画像のデコレーション・構図が完全に違うケース)。
 
-20 件 × 3 シートに分割する理由: 60 件を 1 シートにすると 1 セル ~150px で細部判別力が落ちる。Claude vision は内部で画像をリサイズするため、1 シートを大きくしても解像度向上にはならない。シート枚数を分割することで 1 セルあたりの実効解像度を確保する。
+新設計は **属性抽出 → 機械照合** に置き換える。Sonnet は対象画像と候補画像を「比較」するのではなく、それぞれを独立に見て「属性ラベル」を付ける。機械照合は文字列ベースで行うので、画像のテンプレ差に左右されない。
 
 ### 手順
 
-#### 4-1. サムネダウンロード
+#### 5-1. サムネ画像 DL
 
-第 3 段階出力の各 item の `thumbnails[0]` を取得し、以下に保存:
+第 4 段階出力の各 item の `thumbnails[0]` を取得し、`cheapest-price-research/runs/<ts>/items/{商品番号}/thumbs/page_NN/{rank}.jpg` に保存 (rank 2 桁ゼロ埋め)。
 
-```
-cheapest-price-research/runs/<ts>/items/{商品番号}/thumbs/page_NN/{rank}.jpg
-```
-
-`rank` は 2 桁ゼロ埋め (01〜60)。
-
-実装: `cheapest-price-research/download-thumbnails.js` を bash 経由で実行 (Node CLI、内部で並列 10 ダウンロード):
+bash + curl で並列 DL。50 件分。
 
 ```bash
-node cheapest-price-research/download-thumbnails.js \
-  cheapest-price-research/runs/<ts>/items/{商品番号}/rivals/page_01.json \
-  cheapest-price-research/runs/<ts>/items/{商品番号}/thumbs/page_01
+# 例 (並列 10 で DL)
+mkdir -p cheapest-price-research/runs/<ts>/items/{商品番号}/thumbs/page_NN
+# rivals/page_NN.json から thumbnails[0] と rank を抽出して curl
 ```
 
-#### 4-2. コンタクトシート生成
+#### 5-2. 候補属性抽出 (Sonnet)
 
-`cheapest-price-research/contact-sheet-builder.py` (Python + Pillow) で 20 件ごとに 1 枚の PNG を生成。最大 3 枚出力:
+Sonnet サブエージェント 1 体起動。
 
-```
-cheapest-price-research/runs/<ts>/items/{商品番号}/sheets/page_NN_sheet_1.png  # rank 01〜20
-cheapest-price-research/runs/<ts>/items/{商品番号}/sheets/page_NN_sheet_2.png  # rank 21〜40
-cheapest-price-research/runs/<ts>/items/{商品番号}/sheets/page_NN_sheet_3.png  # rank 41〜60
-```
+入力:
+- バッチ 50 件のタイトル + サムネ画像 (1 件 1 枚)
+- 対象商品の属性 (`target_attributes.json` の該当商品分) — 抽出基準のヒントとして渡す
 
-各セル仕様:
-- 1 セル 400×500px (画像 400×400 + 下部ラベル領域 100px)
-- 5 列 × 4 行 = 20 セル
-- シート全体 2000×2000px + マージン
-- 各セルにオーバーレイ表示する情報:
-  - 左上に index (rank) を白地黒文字で大きく
-  - 下部に価格 `¥980`、タイトル先頭 30 字を 2 行で
+プロンプト本文は `cheapest-price-research/prompts/candidate-attribute-extraction.md` を使う。
 
-CLI 仕様 (`run-python.sh` 経由):
-
-```bash
-cheapest-price-research/run-python.sh cheapest-price-research/contact-sheet-builder.py \
-  --thumbs-dir cheapest-price-research/runs/<ts>/items/{商品番号}/thumbs/page_01 \
-  --rivals-json cheapest-price-research/runs/<ts>/items/{商品番号}/rivals/page_01.json \
-  --output-dir cheapest-price-research/runs/<ts>/items/{商品番号}/sheets \
-  --page 1
-```
-
-`run-python.sh` は Python ラッパー。環境ごとに適切な python3 を自動選択する:
-
-- ローカル macOS: `cheapest-price-research/.venv` (Homebrew Python 3.13 + Pillow 12.2)
-- Cowork サンドボックス (Linux): system `python3` (3.10 + Pillow 12.1 プリインストール)
-
-Cowork サンドボックスは Pillow プリインストール済み、setup 不要。
-
-#### 4-3. Sonnet 1 次判定 (シートごとに 1 Agent、最大 3 Agent)
-
-1 シート = 1 Agent。Agent を **順次**起動する (並列禁止)。
-
-各 Agent に渡す入力:
-- 対象画像 1 枚 (`cheapest-price-research/runs/<ts>/target_images/{商品番号}/photo_1.jpg`)
-- シート画像 1 枚 (`page_NN_sheet_M.png`)
-- そのシートに含まれる 20 件のタイトル + index + 価格の一覧 (テキスト)
-- 対象商品のタイトルと価格 (テキスト)
-
-プロンプト本文は `cheapest-price-research/prompts/primary-filter.md` を使う。プロンプトに含めるべき要素:
-- 絶対禁則
-- タスク説明: 1 次フィルタの目的は「明らかに別商品を弾く」こと。細部の決定打は次段に任せる
-- 同一商品判定の前提 (色・サイズ・個数・柄・素材・用途で別商品扱い)
-- 画像優先の原則 (タイトル・説明文と画像で矛盾があれば画像優先)
-- 入力: 対象画像 + シート画像 + 20 件のタイトル一覧
-- 出力: 同一商品候補の index 配列 (JSON 形式)。保守的に拾う (取りこぼしより誤包含を許容)
-
-出力ファイル: `cheapest-price-research/runs/<ts>/items/{商品番号}/primary_filter/page_NN.json`
+出力: `cheapest-price-research/runs/<ts>/items/{商品番号}/candidate_attributes/page_NN.json`
 
 ```json
 {
   "page": 1,
-  "sheet_results": [
-    { "sheet": 1, "candidates": [3, 7, 12] },
-    { "sheet": 2, "candidates": [] },
-    { "sheet": 3, "candidates": [45] }
-  ],
-  "merged_candidates": [3, 7, 12, 45]
+  "extractedAt": "...",
+  "productCode": "FD01101",
+  "candidates": [
+    {
+      "rank": 1,
+      "id": "m16332362187",
+      "name": "キルティング トートバッグ ブラック A4対応 軽量 大容量 通勤 黒 通学",
+      "price": 610,
+      "attributes": {
+        "category": "トートバッグ",
+        "subcategory": "フォーマルサブバッグ",
+        "color": ["黒"],
+        "size": "A4",
+        "quantity": "1個",
+        "pattern": "無地",
+        "material": "ポリエステル"
+      },
+      "reason": "画像でフラットな無地のサブバッグを確認。タイトルに「キルティング」とあるが画像優先で無地と判定。"
+    }
+  ]
 }
 ```
 
-`merged_candidates` は最大 3 シートの結果を価格昇順 (= rank 昇順) でマージしたもの。
+#### 5-3. 機械照合 (Node スクリプト)
 
----
+`cheapest-price-research/attribute-match.js` を実行:
 
-## 第 5 段階: 候補詳細取得 (candidate_detail_fetch_step)
-
-第 4 段階の 1 次通過候補について、第 1 段階と同じ方法 (items/get API batch) で詳細を取得する。
-
-### 入出力
-
-| | 内容 |
-|---|---|
-| 入力 | `cheapest-price-research/runs/<ts>/items/{商品番号}/primary_filter/page_NN.json` の `merged_candidates` (rank 配列) |
-| 出力 | 候補ごとに `cheapest-price-research/runs/<ts>/items/{商品番号}/candidate_detail/{id}.json` (items/get の `data` フィールド本体、不変) |
-| 出力 | 候補ごとに `cheapest-price-research/runs/<ts>/items/{商品番号}/candidate_images/{id}/photo_1.jpg` (photos[0]、第 6 段階で Sonnet が Read する画像) |
-
-### 取得戦略
-
-価格昇順 (= rank 昇順) で **上位 N 件 (例: 5 件) を一括取得** → 最安候補から順に第 6 段階で判定 → matched 出たら打ち切り (取りすぎ分はそのまま破棄して次商品へ)。
-
-「1 件ずつ取得 → 判定 → matched なら終了」も理論上は最も効率的だが、items/get API は 1 回 fetch あたり ~30ms 程度なので 5 件先取りしても無駄は少ない。一方で「N 件全部 false なら次バッチ (page+1) 取得」のループ制御が単純化される。
-
-### 手順
-
-#### 5-1. items/get バッチ取得
-
-`merged_candidates` の上位 N 件 (デフォルト 5、商品ごとに調整可) の id を抽出し、第 1 段階と同じ `cheapest-price-research/mercari-item-detail.js` を javascript_tool で実行:
-
-```js
-window.__ITEM_DETAIL_INPUT__ = {
-  items: [
-    { productCode: "FD00301", itemId: "m33821215532" },   // rank 2
-    { productCode: "FD00301", itemId: "m55414129562" },   // rank 3
-    // ...
-  ]
-};
+```bash
+node cheapest-price-research/attribute-match.js \
+  --target cheapest-price-research/runs/<ts>/target_attributes.json \
+  --candidates cheapest-price-research/runs/<ts>/items/{商品番号}/candidate_attributes/page_NN.json \
+  --product-code {商品番号} \
+  --output cheapest-price-research/runs/<ts>/items/{商品番号}/matched_candidates/page_NN.json
 ```
 
-戻り値の `results[]` を商品ごとに `candidate_detail/{id}.json` に分割保存。
+照合ロジック:
+- 各候補について 7 軸を target と比較
+- **1 軸でも明らかに違えば対象外** (target/candidate どちらかが null/[] = unknown は「通す」)
+- color は配列。target 色のいずれかが candidate 色に含まれれば match
+- 残った候補を rank 昇順 (= 価格昇順) で出力
 
-#### 5-2. 候補画像 photos[0] をローカル DL
-
-各候補の `data.photos[0]` URL を `bash` + `curl` で `candidate_images/{id}/photo_1.jpg` に保存。
-
-### 早期終了の意味
-
-第 6 段階で `sameProduct=true` が出たらこのループを打ち切る (価格昇順なのでそれが最安値)。`false` なら次の候補の判定に進む。N 件全部 `false` なら第 3 段階に戻り次バッチ (page+1) を取得する。
-
----
-
-## 第 6 段階: 最終判定 (final_identity_judgment_step)
-
-対象商品 (第 1 段階) と候補 1 件 (第 5 段階) の詳細を Sonnet が比較し、同一商品か判定する。
-
-### 判定素材
-
-| 素材 | 出所 |
-|---|---|
-| タイトル | 対象詳細 / 候補詳細 (`name`) |
-| 説明文 (全文) | 対象詳細 / 候補詳細 (`description`) |
-| 画像 (photos[0]) | 対象詳細 / 候補詳細 (ローカル DL 済み) |
-| 価格 | 対象詳細 / 候補詳細 (`price`、参考情報) |
-| 商品の状態 | 対象詳細 / 候補詳細 (`item_condition`、参考情報) |
-
-### 入出力
-
-| | 内容 |
-|---|---|
-| 入力 | 対象詳細 + 候補詳細 (1 件) |
-| 出力 | `cheapest-price-research/runs/<ts>/items/{商品番号}/final_judgment/{id}.json` |
-
-### 出力フォーマット
+出力: `cheapest-price-research/runs/<ts>/items/{商品番号}/matched_candidates/page_NN.json`
 
 ```json
 {
-  "candidateId": "m12345",
-  "candidateRank": 3,
-  "candidatePrice": 980,
-  "candidateUrl": "https://jp.mercari.com/item/m12345",
-  "sameProduct": true,
-  "axes": {
-    "color":    { "verdict": "match"|"mismatch"|"unknown", "target": "...", "candidate": "..." },
-    "size":     { ... },
-    "quantity": { ... },
-    "pattern":  { ... },
-    "material": { ... },
-    "purpose":  { ... }
-  },
-  "reason": "判定根拠を 1-3 文で記述"
+  "page": 1,
+  "productCode": "FD01101",
+  "matched": [
+    { "rank": 6, "id": "m37040454091", "price": 1080, "mismatch_axes": [] },
+    { "rank": 12, "id": "m...", "price": 1150, "mismatch_axes": [] }
+  ],
+  "rejected": [
+    { "rank": 1, "id": "m16332362187", "price": 610, "mismatch_axes": ["pattern"] },
+    { "rank": 4, "id": "m...", "price": 1000, "mismatch_axes": ["color", "pattern"] }
+  ]
 }
 ```
 
+#### 5-4. 検証 + 分岐
+
+- `matched[]` が空配列 → 第 4 段階 (a) に戻り次バッチ (page+1) を取得
+- `matched[]` に 1 件以上ある → 第 6 段階 (画像最終確認) へ進む
+
+### Agent 起動原則
+
+冒頭「## Agent 運用の共通原則」を踏襲 (並列禁止、バッチ逐次保存、SendMessage 復帰、Agent 01 直後のスポットチェック等)。
+
+---
+
+## 第 6 段階: 画像最終確認 (image_final_confirmation_step)
+
+第 5 段階の機械照合で残った候補について、価格昇順先頭から順に「**対象画像 vs 候補画像**」を Sonnet が並べて見て、最終的に同一商品か確認する。
+
+### 目的
+
+機械照合で残った候補は 7 軸属性が target と一致しているが、それでも別物の可能性がある (タイトル盛り盛りで属性が同じに見えるが実物は別物、属性抽出 Agent の判定誤りなど)。最終的に画像 1 対 1 で Sonnet が確認することでこれを救う。
+
+### 入出力
+
+| | 内容 |
+|---|---|
+| 入力 | `cheapest-price-research/runs/<ts>/items/{商品番号}/matched_candidates/page_NN.json` (rank 昇順) |
+| 入力 | `cheapest-price-research/runs/<ts>/target_images/{商品番号}/photo_N.jpg` (対象画像 全枚数) |
+| 入力 | items/get で取得する候補詳細 + 候補画像 (全枚数) |
+| 出力 | `cheapest-price-research/runs/<ts>/items/{商品番号}/candidate_detail/{id}.json` (候補ごと、不変) |
+| 出力 | `cheapest-price-research/runs/<ts>/items/{商品番号}/candidate_images/{id}/photo_N.jpg` (photos 全枚数) |
+| 出力 | `cheapest-price-research/runs/<ts>/items/{商品番号}/final_judgment/{id}.json` (候補ごと、不変) |
+
 ### 手順
 
-1. Sonnet サブエージェント (`model=sonnet`) を 1 体起動
-2. プロンプト本文は `cheapest-price-research/prompts/final-judgment.md` を使う。プロンプトに含めるべき要素:
-   - 絶対禁則
-   - タスク説明: 対象商品と候補 1 件が同一商品か最終判定する
-   - 同一商品判定の前提 (色・サイズ・個数・柄・素材・用途で別商品扱い)
-   - 画像優先の原則
-   - 入力: 対象 (タイトル + 説明文 + photo_1.jpg) + 候補 (タイトル + 説明文 + photo_1.jpg)
-   - 出力: 上記 JSON
-   - 判定基準: 全 6 軸 (色/サイズ/個数/柄/素材/用途) のいずれかが明らかに違えば `sameProduct=false`。判定根拠 (どの軸で一致したか・どの軸で違ったか) を `reason` に書く
-3. Agent 完了後の検証 (出力存在、JSON parse、判定理由が空でない)
+1. `matched_candidates/page_NN.json` の `matched[]` を rank 昇順 (= 価格昇順) で順次処理
+2. 最先頭の候補について:
+   - **items/get で候補詳細を 1 件取得**し、`candidate_detail/{id}.json` に保存 (`mercari-item-detail.js` の単発呼び出し)
+   - `data.photos[]` 全枚数を `candidate_images/{id}/photo_N.jpg` に curl で DL
+   - Sonnet サブエージェント 1 体起動 (`prompts/final-judgment.md` を使う)
+3. Sonnet の出力 (`final_judgment/{id}.json`):
 
-### 判定結果による分岐
+```json
+{
+  "candidateId": "m37040454091",
+  "candidateRank": 6,
+  "candidatePrice": 1080,
+  "candidateUrl": "https://jp.mercari.com/item/m37040454091",
+  "sameProduct": true,
+  "reason": "対象と候補で構図・素材・キャラクター付属物まで一致。全画像で齟齬なし。"
+}
+```
 
-- `sameProduct=true` → 第 3 段階のループを打ち切り、第 7 段階 (`result.json` 書き出し) に進む
-- `sameProduct=false` → 第 5 段階に戻り、次の候補 (rank 昇順で次) を取得・判定
-- 1 次通過候補がすべて `false` → 第 3 段階に戻り、次バッチ (page+1) を取得
+4. 分岐:
+   - `sameProduct=true` → 最安値確定、`result.json` に matched 書き出し、商品ループ終了
+   - `sameProduct=false` → 同バッチ次の候補で 2 に戻る
+   - バッチ内全候補 false → 第 4 段階に戻り次バッチへ
+
+### Sonnet プロンプトに含めるべき要素
+
+- 絶対禁則
+- タスク: 機械照合で残った候補と対象が同一商品か、画像 (target + candidate の全画像) で最終確認
+- 画像優先の原則
+- 入力: 対象画像 全枚数 + 候補画像 全枚数
+- 出力: `sameProduct` (bool) と `reason` (1〜3 文)
 
 ### `result.json` 書き出し
 
-最安値確定時 (第 5・6 段階で `sameProduct=true` が出た時) に書き出す:
+matched 確定時:
 
 ```json
 {
-  "productCode": "FD00101",
+  "productCode": "FD01101",
   "status": "matched",
   "cheapest": {
-    "id": "m12345",
-    "rank": 3,
+    "id": "m37040454091",
+    "rank": 6,
     "page": 1,
-    "price": 980,
-    "url": "https://jp.mercari.com/item/m12345"
+    "price": 1080,
+    "url": "https://jp.mercari.com/item/m37040454091",
+    "title": "..."
   },
-  "reason": "色 (黒)・形状 (V 字スタッズ)・素材 (合皮)・個数 (1 本) が一致...",
+  "reason": "対象と候補で構図・素材・キャラクター付属物まで一致。",
   "pagesScanned": 1,
-  "totalCandidatesAfterPrimaryFilter": 6,
+  "totalCandidatesAfterAttributeMatch": 5,
   "totalCandidatesJudgedInFinalStep": 1
 }
 ```
 
-打ち切り条件到達時 (`no_match`):
+打ち切り条件到達時 (no_match):
 
 ```json
 {
-  "productCode": "FD00101",
+  "productCode": "FD01101",
   "status": "no_match",
-  "reason": "5 バッチ (300 件) 取得しても同一商品が見つからなかった",
+  "reason": "5 バッチ (250 件) 取得しても同一商品が見つからなかった",
   "pagesScanned": 5,
-  "totalCandidatesAfterPrimaryFilter": 0,
+  "totalCandidatesAfterAttributeMatch": 0,
   "totalCandidatesJudgedInFinalStep": 0
 }
 ```
@@ -880,7 +824,7 @@ window.__ITEM_DETAIL_INPUT__ = {
 
 | | 内容 |
 |---|---|
-| 入力 | `cheapest-price-research/runs/<ts>/items/*/result.json` (全 20 商品) + `cheapest-price-research/runs/<ts>/target_detail/*.json` (対象価格) + `cheapest-price-research/runs/<ts>/source.csv` (商品番号→対象URLの対応) |
+| 入力 | `cheapest-price-research/runs/<ts>/items/*/result.json` (全 20 商品) + `target_detail/*.json` (対象価格) + `source.csv` (商品番号→対象URLの対応) |
 | 出力 | `cheapest-price-research/runs/<ts>/report.csv` (UTF-8 BOM 付き) |
 
 ### 列定義
@@ -888,7 +832,7 @@ window.__ITEM_DETAIL_INPUT__ = {
 本手順書冒頭「## 出力」の列定義に従う:
 
 ```
-商品番号,対象URL,対象価格,最安URL,最安価格,価格差,同一判定理由,ステータス
+商品番号,対象URL,対象価格,最安URL,最安価格,価格差,ステータス,同一判定理由
 ```
 
 ### 手順
@@ -905,11 +849,9 @@ window.__ITEM_DETAIL_INPUT__ = {
 
 ### 物販オーナーへの報告フォーマット
 
-セッション完了時に以下をチャットで物販オーナーに報告する:
-
 ```
 最安値リサーチ完了 (20 件、所要 約X時間Y分)。
-レポート: /Users/kawasaki/.../cheapest-price-research/runs/<ts>/report.csv
+レポート: /Users/kawasaki/.../`cheapest-price-research/runs/<ts>/report.csv`
 
 結果サマリ:
 - matched: M 件
@@ -937,31 +879,38 @@ window.__ITEM_DETAIL_INPUT__ = {
 ↓
 1. items/get API バッチ (20 件の URL を一括 fetch)
    → target_detail/{商品番号}.json (全 20 商品)
-   → target_images/{商品番号}/photo_1.jpg (全 20 商品、curl で DL)
+   → target_images/{商品番号}/photo_N.jpg (全 20 商品、photos 全枚数を curl で DL)
 ↓
-2. Sonnet サブエージェント 1 体起動
-   入力: target_detail/ + target_images/ (実物データ)
-   出力: keywords.csv (商品番号→検索キーワード)
-   Agent 01 完了直後にスポットチェック (5〜10 件)
+2. Sonnet サブエージェント 1 体起動 (キーワード生成)
+   → keywords.csv
+↓
+3. Sonnet サブエージェント 1 体起動 (対象属性抽出)
+   → target_attributes.json
 ↓
 keywords.csv の各商品について順次 (20 商品):
-  - 第 3〜6 段階のループ (1 商品ぶん):
-      page=1 から始める
-      while page <= 5 and 連続ゼロ < 3:
-        第 3 段階: rivals/page_NN.json (バッチ取得)
-        if hasNext=false かつ items が空または不十分: 
+  - 第 4〜6 段階のループ (1 商品ぶん):
+      page = 1
+      while page <= 5:
+        第 4 段階: rivals/page_NN.json (検索 API 50 件)
+        if hasNext=false かつ items が空または不十分:
           break (no_match で次商品へ)
-        第 4 段階: primary_filter/page_NN.json (Sonnet × 最大 3 シート)
-        if primary_filter が空: 連続ゼロ += 1; page += 1; continue
-        for rank in merged_candidates (上位 5 件):
-          第 5 段階: candidate_detail/{id}.json + candidate_images/{id}/photo_1.jpg
-          第 6 段階: final_judgment/{id}.json
-          if sameProduct=true: result.json (matched); break (ループ脱出)
-        if matched: break
-        連続ゼロ = 0; page += 1
+        第 5 段階 5-1: サムネ DL (50 枚)
+        第 5 段階 5-2: 候補属性抽出 (Sonnet 1 体)
+                       → candidate_attributes/page_NN.json
+        第 5 段階 5-3: 機械照合 (Node)
+                       → matched_candidates/page_NN.json
+        if matched が空: page += 1; continue
+        for cand in matched[] (rank 昇順):
+          第 6 段階: items/get で候補詳細取得
+                     → candidate_detail/{id}.json + candidate_images/{id}/photo_N.jpg
+          第 6 段階: Sonnet 1 体 (画像最終確認)
+                     → final_judgment/{id}.json
+          if sameProduct=true: result.json (matched); break (商品ループ脱出)
+        if matched 確定: break
+        page += 1
       if not matched: result.json (no_match)
 ↓
-3. report.csv (20 行の最終 CSV)
+7. report.csv (20 行の最終 CSV)
    run_notes.md
    物販オーナーへ報告
 ```
@@ -973,11 +922,18 @@ keywords.csv の各商品について順次 (20 商品):
 | 段階 | 所要 (目安) | Sonnet 体数 |
 |---|---|---|
 | 0. 準備 + DPoP セッション確立 | 1 分 | 0 |
-| 1. 対象詳細取得 + 画像 DL | 1 分 (API 並列 10) | 0 |
+| 1. 対象詳細取得 + photos 全枚数 DL | 1〜2 分 (API 並列 10) | 0 |
 | 2. キーワード生成 | 2-3 分 | 1 |
-| 3-6. 最安値探索ループ (20 件) | 60-120 分 | 40-100 (商品依存) |
+| 3. 対象属性抽出 | 2-3 分 | 1 |
+| 4〜6. 最安値探索ループ (20 件) | 60-90 分 | 20-100 (商品依存) |
 | 7. レポート + run_notes | 5 分 | 0 |
-| **合計** | **約 1-2 時間** | **40-100 体** |
+| **合計** | **約 1.5〜2 時間** | **約 22〜102 体** |
+
+Sonnet 体数の内訳 (1 商品あたり):
+- 候補属性抽出: 1〜5 体 (バッチごと、平均 1〜2 で matched 確定)
+- 画像最終確認: 1〜N 体 (matched 候補のうち sameProduct=true が出るまで、平均 1〜3 で確定)
+
+20 商品 × 平均 4 体 = 約 80 体が標準的なレンジ。
 
 1 セッションで完走できる規模 (Cowork の 1M context + Opus 4.7 想定)。中断する場合は再開せず新 run で全 20 件をやり直す前提。
 
@@ -987,13 +943,12 @@ keywords.csv の各商品について順次 (20 商品):
 
 | パス | 役割 | 本手順での参照段階 |
 |---|---|---|
-| `cheapest-price-research/mercari-item-detail.js` | items/get API batch 取得 | 第 1 / 第 5 段階 |
-| `cheapest-price-research/cheapest-price-search.js` | 検索 API batch 取得 | 第 3 段階 |
-| `cheapest-price-research/download-thumbnails.js` | サムネ並列 DL | 第 4 段階 4-1 |
-| `cheapest-price-research/contact-sheet-builder.py` | コンタクトシート PNG 生成 | 第 4 段階 4-2 |
-| `cheapest-price-research/run-python.sh` | Python ラッパー (macOS/Linux 吸収) | 第 4 段階 4-2 |
-| `cheapest-price-research/prompts/keyword-generation.md` | キーワード生成プロンプト本文 | 第 2 段階 |
-| `cheapest-price-research/prompts/primary-filter.md` | 1 次フィルタプロンプト本文 | 第 4 段階 4-3 |
-| `cheapest-price-research/prompts/final-judgment.md` | 最終判定プロンプト本文 | 第 6 段階 |
-| `docs/research/mercari/judgment_examples/` | 同一商品判定の実例集 | 第 2 / 第 4 / 第 6 段階 |
+| `cheapest-price-research/mercari-item-detail.js` | items/get API batch 取得 | 第 1 / 第 6 段階 |
+| `cheapest-price-research/cheapest-price-search.js` | 検索 API batch 取得 | 第 4 段階 |
+| `cheapest-price-research/attribute-match.js` | 7 軸機械照合 (Node CLI) | 第 5 段階 5-3 |
+| `cheapest-price-research/prompts/keyword-generation.md` | キーワード生成プロンプト | 第 2 段階 |
+| `cheapest-price-research/prompts/target-attribute-extraction.md` | 対象属性抽出プロンプト | 第 3 段階 |
+| `cheapest-price-research/prompts/candidate-attribute-extraction.md` | 候補属性抽出プロンプト | 第 5 段階 5-2 |
+| `cheapest-price-research/prompts/final-judgment.md` | 画像最終確認プロンプト | 第 6 段階 |
+| `docs/research/mercari/judgment_examples/` | 同一商品判定の実例集 | 第 3 / 第 5 / 第 6 段階 |
 | `procedures/listing-cowork.md` | 出品手順 (本手順書の後段) | 連携 |

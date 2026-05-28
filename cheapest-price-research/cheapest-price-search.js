@@ -106,7 +106,7 @@
   const uuid = document.cookie.match(/mercari-shd-uuid-lb=([^;]+)/)?.[1] || '';
 
   const API = 'https://api.mercari.jp/v2/entities:search';
-  const PAGE_SIZE = 60;
+  const PAGE_SIZE = 50;
   const REQUEST_INTERVAL_MS = 200;
 
   async function searchOne({ productCode, keyword, page = 1, pageToken = '' }) {
