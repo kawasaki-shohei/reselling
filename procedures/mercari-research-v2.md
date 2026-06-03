@@ -514,13 +514,15 @@ image_review/filtered_unflagged.json (verdict ∈ {keep, unclear} のみ、第 5
 
 1 スクリプトで集約・辞書マージ・マッチ・primary 判定・統計出力までを一括処理する (実行時間は数秒)。以下の各 #### は流れ図 Part 1 のステージ順で本処理の挙動を詳述する。
 
-#### 入力 (3 系統)
+#### 入力 (5 系統)
 
 | 系統 | パス | 性質 |
 |---|---|---|
-| 生データ | `research/<rawfile>.json` | 第 1 段階 `collect.js` の出力 (items 配列) |
+| 生データ | `research/<rawfile>.json` | 第 1 段階 `collect.js` の出力 (items 配列、各 item に `categoryId` を含む) |
 | 正規辞書 | `procedures/exclude_by_keywords/keywords.json` | git 管理、定期更新対象。`priority` 配列とカテゴリ別キーワード集合を持つ |
 | 暫定辞書 | `research/runs/<ts>/dict_expansion/keywords_pending.json` | 第 3 段階の Sonnet 出力 (当回のみ)、`--pending` オプションで指定 |
+| カテゴリマスタ | `procedures/exclude_by_category/category_master/mercari_categories.json` | git 管理。Mercari 公式 `categoryId` → root カテゴリ名 (`rootCategoryName`) の解決に使う |
+| 除外カテゴリ定義 | `procedures/exclude_by_category/excluded_categories.json` | git 管理。公式 categoryId で丸ごと除外する root カテゴリを定義 (下記「公式カテゴリ除外」参照) |
 
 実装スクリプトは `research/exclude_by_keywords.js` (CLI) + `research/_classifier.js` (内部ヘルパー、第 3 段階と共用)。辞書 (JSON) とスクリプト (JS) を分離しているため、辞書だけの編集で再判定できる (コード変更なし)。
 
@@ -564,12 +566,24 @@ image_review/filtered_unflagged.json (verdict ∈ {keep, unclear} のみ、第 5
 
 設計原則 (どの語に notWith / withAll を付けるか、短語誤爆の対処パターン、新キーワード追加時の判断基準) は `docs/research/mercari/keywords_design_notes.md` を参照。
 
+#### 公式カテゴリ除外 (category_excluded)
+
+キーワード判定と並行して、各行の Mercari 公式 `categoryId` を見て、法令等でカテゴリ全体が中国輸入物販の対象外になる root カテゴリに属する行を除外する。`exclude_by_keywords.js` が `_classifier.js` 経由で実施する (キーワード除外と同じスクリプト・同じ第 4 段階)。
+
+- **除外対象 (root 名)**: `procedures/exclude_by_category/excluded_categories.json` の `mercari.excluded_root_categories` で定義。現状は `食品・飲料・酒` / `CD・DVD・ブルーレイ` / `本・雑誌・漫画` / `チケット` の 4 root
+- **categoryId → root の解決**: `category_master/mercari_categories.json` の `rootCategoryName` を参照。`collect.js` が各 item に保存した `categoryId` を集約行の代表 categoryId (先頭の非空値) として使う
+- **優先度**: カテゴリ除外はキーワードより優先 (`primary = 'category_excluded'`)。公式カテゴリは出品者が選んだ確実な分類で、タイトル文字列マッチより信頼できるため。キーワードにも該当した場合は `matches` に両方残す
+- **狙い**: タイトルに該当語が無い取りこぼし (例「ミニトマト 3kg」「ふりかけのり」は food 辞書に無い) を categoryId で確実に除外し、Recall を底上げする
+- **トレードオフ**: 出品者がカテゴリを誤設定した雑貨 (例「LP レコード袋」を CD・DVD カテゴリに出品) を巻き込む可能性があるが、実データ検証で極小 (CD・DVD 598 件中 1 件) のため許容する
+- **除外候補カテゴリの増やし方**: `procedures/exclude_by_keywords_precision_check/` の Recall 検証で、ある root カテゴリの取りこぼしが多いと判明したら `excluded_categories.json` に root 名を追加する (運用は同 README §8.2 参照)
+
 #### primary 決定と分類カテゴリ
 
 カテゴリ一覧と優先度順序の **正本は `procedures/exclude_by_keywords/keywords.json` の `priority` 配列**。本手順書では列挙しない (新しい禁止理由が出るたびに辞書だけ追記すれば本段階の処理に反映され、手順書の改訂は不要にするため)。
 
 - カテゴリは禁止理由を表す英小文字 + アンダースコア命名 (例: 食品衛生法系・薬機法系・キャラクター版権系・ハンドメイド系・取引専用ページ系 など)
-- `_classifier.js` の `decidePrimary(flags, priority)` が `priority` 配列の先頭から評価し、最初にマッチしたカテゴリを `primary` に採用する
+- **公式カテゴリ除外 (`category_excluded`) はキーワードの `priority` 評価より優先される** (`_classifier.js` の `annotateRows` がカテゴリ除外を先に判定し、該当すれば `primary = 'category_excluded'` に確定)
+- カテゴリ除外に該当しなかった行のみ、`_classifier.js` の `decidePrimary(flags, priority)` が `priority` 配列の先頭から評価し、最初にマッチしたカテゴリを `primary` に採用する
 - 全マッチは `matches` 配列に残るので、後段で primary 以外のカテゴリも参照できる
 
 #### 出力フォーマット
@@ -579,7 +593,7 @@ image_review/filtered_unflagged.json (verdict ∈ {keep, unclear} のみ、第 5
 - `exclusion_output.json` (全 unique row + 判定結果、不変)
 - `exclusion_stats.md` (カテゴリ別件数の統計サマリー、不変)
 
-出力 JSON の各行:
+出力 JSON の各行 (`categoryId` は公式カテゴリ除外の判定に使った代表 categoryId):
 
 ```json
 {
@@ -590,6 +604,7 @@ image_review/filtered_unflagged.json (verdict ∈ {keep, unclear} のみ、第 5
   "priceMax": 999,
   "count": 1,
   "ids": ["m71226933068"],
+  "categoryId": "1376",
   "exclusion": {
     "primary": "food",
     "matches": { "food": ["ふきのとう"] }
@@ -597,10 +612,12 @@ image_review/filtered_unflagged.json (verdict ∈ {keep, unclear} のみ、第 5
 }
 ```
 
+公式カテゴリ除外に該当した行は `"exclusion": { "primary": "category_excluded", "matches": { "category_excluded": ["食品・飲料・酒"] } }` の形になる (キーワードにも該当していれば matches に併記)。
+
 後段への振り分け:
 
 - `exclusion: null` なら印なし → 画像除外 (image_exclusion_step) へ進む
-- `exclusion != null` なら印あり → 仕入れ候補から除外
+- `exclusion != null` なら印あり → 仕入れ候補から除外 (キーワード除外・公式カテゴリ除外いずれも同じ扱い)
 
 #### 実行
 

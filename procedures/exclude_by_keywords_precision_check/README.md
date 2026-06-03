@@ -113,16 +113,22 @@ echo "RUN_DIR=$RUN_DIR"
 
 ### 4.2 判定対象抽出 (01_prepare.js)
 
+精度チェックは本番と同じ除外結果を検証する。まず本番の `exclude_by_keywords.js` を **`--pending` なし (正規辞書のみ、暫定辞書を混ぜない)** で実行して `exclusion_output.json` を作り、それを `01_prepare.js` の入力にする。これで除外ロジックが本番に一元化され、キーワード除外・公式カテゴリ除外の変更が精度チェックにも自動で反映される (除外の二重実装による取りこぼしを防ぐ)。
+
 ```bash
 # 最新生データのパスを確定 (環境に応じて書き換え可)
 RAW=$(ls research/*_mercari_14day_results.json | tail -1)
 echo "RAW=$RAW"
 
+# 本番の除外スクリプトを正規辞書のみで実行 → exclusion_output.json (数秒)
+node research/exclude_by_keywords.js $RAW $RUN_DIR/exclusion
+
+# 除外結果から判定対象 (flagged) を抽出
 node procedures/exclude_by_keywords_precision_check/scripts/01_prepare.js \
-  $RAW $RUN_DIR $PHASE
+  $RUN_DIR/exclusion/exclusion_output.json $RAW $RUN_DIR $PHASE
 ```
 
-出力: `$RUN_DIR/flagged_all.json` (flagged 全件、rowIndex / title / primary / matches / image_path / thumbnail_url を含む)。
+出力: `$RUN_DIR/flagged_all.json` (flagged 全件、rowIndex / title / primary / matches / image_path / thumbnail_url を含む)。flagged には `category_excluded` (公式カテゴリ除外) も含まれる。
 
 ### 4.3 バッチ分割 (02_split_batches.js)
 
@@ -298,7 +304,8 @@ mkdir -p $RUN_DIR
 
 RAW=$(ls research/*_mercari_14day_results.json | tail -1)
 
-node procedures/exclude_by_keywords_precision_check/scripts/01_prepare.js $RAW $RUN_DIR $PHASE
+node research/exclude_by_keywords.js $RAW $RUN_DIR/exclusion
+node procedures/exclude_by_keywords_precision_check/scripts/01_prepare.js $RUN_DIR/exclusion/exclusion_output.json $RAW $RUN_DIR $PHASE
 node procedures/exclude_by_keywords_precision_check/scripts/02_split_batches.js $RUN_DIR
 node procedures/exclude_by_keywords_precision_check/scripts/03_download_images.js $RUN_DIR
 # progress.json 初期化 (§4.5 と同じ)
@@ -468,6 +475,23 @@ Phase C 完了後は Phase A / B 両方のレポートに統合 P/R/F1 を追記
 - **多義的な一般語は辞書に入れない**。例: 「パウダー」単独は食品 (プロテイン / ベーキング) ・工芸 (クロムパウダー / グリッター) ・DIY (エイジング) で多用され、入れると誤爆が増える。**化粧品専用の複合語**「ルースパウダー」「フェイスパウダー」等のみ登録する
 - **短語の誤爆は notWith で対処を優先**。単語境界マッチや組み合わせマッチを実装する前に、`notWith` で文脈除外できないか検討する (2026-04-18 の実績: 7 語を notWith 化して 9 件の rescue をゼロにできた)
 - **採用候補の可否判断**: GT に該当行がないのに机上の想定で追加しない (例: 「マカロン」は非食品文脈で「マカロンお守り」等もあり得るため慎重に扱う)
+
+### 8.2 公式カテゴリ除外の検討 (Recall 改善の手段)
+
+キーワード辞書 (`.includes()` ベース) は「タイトルに該当語が無い商品」を取りこぼす。例: 「ミニトマト 3kg」「ふりかけのり」は food 辞書のどの語にも一致せず unflagged に漏れる。Recall が伸びない主因の一つがこれ。
+
+Recall 検証 (Phase B) で **ある root カテゴリの商品をまとまって取りこぼしている (unflagged に exclude 相当が集中する)** と分かった場合、そのカテゴリは Mercari 公式 `categoryId` で丸ごと除外することを検討する。タイトル文字列ではなく出品者が選んだ公式カテゴリで弾くため、辞書に載らない取りこぼしも確実に除外でき、Recall を底上げできる。
+
+判断の流れ:
+
+1. Recall 検証 (Phase B) または `final_clusters.json` の仕入れ候補を、各行の公式 categoryId (= `collect.js` が保存し `procedures/exclude_by_category/category_master/mercari_categories.json` で root 解決) で集計する
+2. ある root カテゴリで「取りこぼし (本来除外すべき unflagged) が多く」「かつ仕入れ候補として残すべき商品がほぼ無い」なら、丸ごと除外の候補
+3. そのカテゴリの仕入れ候補クラスタの実タイトルを目視し、巻き込み (誤除外) が許容範囲か確認する (出品者のカテゴリ誤設定で雑貨が混じることがある)
+4. 問題なければ `procedures/exclude_by_category/excluded_categories.json` の `mercari.excluded_root_categories` に root 名を追加する。`exclude_by_keywords.js` を再実行すれば次回から反映される (コード変更不要)
+
+仕組み・設計の詳細は `procedures/mercari-research-v2.md` 第 4 段階「公式カテゴリ除外 (category_excluded)」を参照。
+
+導入実績 (2026-06-03): `食品・飲料・酒` / `CD・DVD・ブルーレイ` / `本・雑誌・漫画` / `チケット` の 4 root を除外対象に設定。run 2026_05_15_10_00 の生データで検証したところ、キーワードでは取りこぼしていた 570 件を追加除外でき (例「ミニトマト 3kg」「ふりかけのり」)、誤除外は CD・DVD カテゴリの「LP レコード袋」1 件 (598 件中) に留まった。
 
 ---
 

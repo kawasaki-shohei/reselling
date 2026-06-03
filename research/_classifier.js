@@ -5,6 +5,22 @@ const fs = require('fs');
 const path = require('path');
 
 const DICT_PATH = path.join(__dirname, '..', 'procedures', 'exclude_by_keywords', 'keywords.json');
+const CATEGORY_MASTER_PATH = path.join(__dirname, '..', 'procedures', 'exclude_by_category', 'category_master', 'mercari_categories.json');
+const EXCLUDED_CATEGORIES_PATH = path.join(__dirname, '..', 'procedures', 'exclude_by_category', 'excluded_categories.json');
+
+// 公式カテゴリ除外の定義を読み込む。Mercari 公式 categoryId の root が
+// excluded_categories.json の除外対象に含まれていれば、キーワード判定より優先して除外する。
+// 戻り値の catId2Root は categoryId(文字列) -> root カテゴリ名のマップ。
+function loadCategoryExclusion() {
+  const master = JSON.parse(fs.readFileSync(CATEGORY_MASTER_PATH, 'utf8'));
+  const excl = JSON.parse(fs.readFileSync(EXCLUDED_CATEGORIES_PATH, 'utf8'));
+  const excludedRoots = new Set((excl.mercari && excl.mercari.excluded_root_categories) || []);
+  const catId2Root = new Map();
+  for (const c of master.categories) {
+    catId2Root.set(String(c.id), c.rootCategoryName || c.name);
+  }
+  return { catId2Root, excludedRoots, masterPath: CATEGORY_MASTER_PATH, excludedPath: EXCLUDED_CATEGORIES_PATH };
+}
 
 // 正規辞書を読み、pendingPath があれば暫定辞書とマージして返す。
 // マージルール: カテゴリごとにキーワード配列を concat / 重複は正規辞書側を優先
@@ -41,10 +57,13 @@ function aggregateBySellerTitle(items) {
         price_max: 0,
         seller: it.sellerId || '?',
         name: it.name || '',
+        categoryId: '',
       });
     }
     const rec = map.get(key);
     rec.ids.push(it.id);
+    // 同一 seller+title は通常同一カテゴリ。先頭の非空 categoryId を代表値として保持する。
+    if (!rec.categoryId && it.categoryId) rec.categoryId = String(it.categoryId);
     if (it.price < rec.price_min) rec.price_min = it.price;
     if (it.price > rec.price_max) rec.price_max = it.price;
   }
@@ -83,11 +102,28 @@ function decidePrimary(flags, priority) {
   return null;
 }
 
-// entries 配列を除外フラグ付きの rows に変換する
-function annotateRows(entries, keywords, priority) {
+// entries 配列を除外フラグ付きの rows に変換する。
+// categoryExclusion (loadCategoryExclusion の戻り値) を渡すと公式カテゴリ除外を併用する。
+// カテゴリ除外はキーワード除外より優先 (primary = 'category_excluded')。法令でカテゴリ全体が
+// 対象外になるもので、タイトル文字列より確実なため。null の場合は従来通りキーワードのみで判定。
+function annotateRows(entries, keywords, priority, categoryExclusion = null) {
   return entries.map((e, i) => {
     const flags = classify(e.name, keywords);
-    const primary = decidePrimary(flags, priority);
+    const kwPrimary = decidePrimary(flags, priority);
+
+    let catRoot = null;
+    if (categoryExclusion && e.categoryId) {
+      const root = categoryExclusion.catId2Root.get(String(e.categoryId));
+      if (root && categoryExclusion.excludedRoots.has(root)) catRoot = root;
+    }
+
+    let exclusion = null;
+    if (catRoot) {
+      exclusion = { primary: 'category_excluded', matches: { ...flags, category_excluded: [catRoot] } };
+    } else if (kwPrimary) {
+      exclusion = { primary: kwPrimary, matches: flags };
+    }
+
     return {
       rowIndex: i,
       seller: e.seller,
@@ -96,14 +132,18 @@ function annotateRows(entries, keywords, priority) {
       priceMax: e.price_max,
       count: e.ids.length,
       ids: e.ids,
-      exclusion: primary ? { primary, matches: flags } : null,
+      categoryId: e.categoryId || '',
+      exclusion,
     };
   });
 }
 
 module.exports = {
   DICT_PATH,
+  CATEGORY_MASTER_PATH,
+  EXCLUDED_CATEGORIES_PATH,
   loadDictionary,
+  loadCategoryExclusion,
   aggregateBySellerTitle,
   classify,
   decidePrimary,

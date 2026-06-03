@@ -1,0 +1,11 @@
+{
+  "_note": "出品時の公式カテゴリ(categoryId)で機械除外する対象を root カテゴリ名で定義する。法令等でカテゴリ全体が中国輸入物販の仕入れ対象外になるもの(キーワード除外を補完し、タイトルに該当語が無い取りこぼしも categoryId で確実に弾く)。判定は research/_classifier.js が category_master/mercari_categories.json の rootCategoryName と照合して行う。除外理由・選定根拠は procedures/mercari-research-v2.md 第4段階を参照。",
+  "mercari": {
+    "excluded_root_categories": [
+      "食品・飲料・酒",
+      "CD・DVD・ブルーレイ",
+      "本・雑誌・漫画",
+      "チケット"
+    ]
+  }
+}

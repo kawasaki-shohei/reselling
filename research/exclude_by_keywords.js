@@ -18,7 +18,7 @@
 
 const fs = require('fs');
 const path = require('path');
-const { loadDictionary, aggregateBySellerTitle, annotateRows } = require('./_classifier');
+const { loadDictionary, loadCategoryExclusion, aggregateBySellerTitle, annotateRows } = require('./_classifier');
 const { getRunDir } = require('./_run_paths');
 const { writeFileSafe } = require('./_safe_write');
 
@@ -50,10 +50,12 @@ fs.mkdirSync(OUT_DIR, { recursive: true });
 const OUT_JSON = path.join(OUT_DIR, 'exclusion_output.json');
 const OUT_STATS = path.join(OUT_DIR, 'exclusion_stats.md');
 
+const categoryExclusion = loadCategoryExclusion();
+
 const d = JSON.parse(fs.readFileSync(INPUT, 'utf8'));
 const items = d.items;
 const entries = aggregateBySellerTitle(items);
-const rows = annotateRows(entries, dict.keywords, dict.priority);
+const rows = annotateRows(entries, dict.keywords, dict.priority, categoryExclusion);
 
 const stats = {
   total_items: items.length,
@@ -62,9 +64,10 @@ const stats = {
   by_category: {},
 };
 for (const p of dict.priority) stats.by_category[p] = 0;
+stats.by_category.category_excluded = 0;
 for (const r of rows) {
   if (r.exclusion === null) stats.unflagged += 1;
-  else stats.by_category[r.exclusion.primary] += 1;
+  else stats.by_category[r.exclusion.primary] = (stats.by_category[r.exclusion.primary] || 0) + 1;
 }
 
 const out = {
@@ -74,11 +77,13 @@ const out = {
     totalItems: items.length,
     uniqueRows: entries.length,
     createdAt: new Date().toISOString(),
-    classifier: 'keyword-match v1 (includes-based)',
+    classifier: 'keyword-match v1 + category-exclusion (includes-based)',
     dictPath: path.relative(path.join(__dirname, '..'), dict.dictPath),
     pendingPath: dict.pendingPath ? path.relative(path.join(__dirname, '..'), dict.pendingPath) : null,
     priority: dict.priority,
-    note: '部分文字列マッチのため一般語の誤爆あり (想定誤判定率 6%)。辞書改善で対応。',
+    categoryMasterPath: path.relative(path.join(__dirname, '..'), categoryExclusion.masterPath),
+    excludedRootCategories: [...categoryExclusion.excludedRoots],
+    note: '部分文字列マッチのため一般語の誤爆あり (想定誤判定率 6%)。辞書改善で対応。category_excluded は法令等でカテゴリ全体が対象外のものを公式 categoryId で確実に除外する (キーワードより優先)。',
   },
   stats,
   rows,
@@ -98,6 +103,10 @@ md += `| カテゴリ | 件数 | 割合 |\n|---|---|---|\n`;
 for (const p of dict.priority) {
   const n = stats.by_category[p];
   md += `| ${p} | ${n} | ${((n / entries.length) * 100).toFixed(1)}% |\n`;
+}
+{
+  const n = stats.by_category.category_excluded;
+  md += `| category_excluded (公式カテゴリ除外) | ${n} | ${((n / entries.length) * 100).toFixed(1)}% |\n`;
 }
 md += `| **unflagged (仕入れ候補)** | **${stats.unflagged}** | **${((stats.unflagged / entries.length) * 100).toFixed(1)}%** |\n\n`;
 md += `## 精度の目安 (2026-04-18 検証)\n\n`;
