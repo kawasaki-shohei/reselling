@@ -7,6 +7,7 @@
     "character_copyright",
     "brand_imitation",
     "electronics_check",
+    "psc",
     "handmade",
     "underwear",
     "sourcing_unavailable",
@@ -250,7 +251,8 @@
       "アークナイツ",
       "モフサンド", "mofusand",
       "ムーミン", "MOOMIN", "Moomin",
-      "ストレンジャー・シングス", "ストレンジャーシングス"
+      "ストレンジャー・シングス", "ストレンジャーシングス",
+      "ウルトラマン"
     ],
     "brand_imitation": [
       "adidas", "アディダス",
@@ -385,7 +387,8 @@
       "電気毛布",
       "ワークライト",
       "字光式",
-      "LEDナンバープレート"
+      "LEDナンバープレート",
+      { "keyword": "ネイル", "withAll": ["ライト"], "notWith": ["ライトブルー"] }
     ],
     "medical": [
       "矯正器具", "歯列矯正",
@@ -449,6 +452,12 @@
     "korea": [
       "韓国",
       "ハングル"
+    ],
+    "psc": [
+      "ジュニアシートベルト",
+      "子供用シートベルト",
+      "キッズベルト",
+      "補助ベルト"
     ]
   }
 }

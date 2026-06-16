@@ -200,6 +200,12 @@ SendMessage({
 
 いずれも `last_error` に原則 2 のフォーマットで記録し、リセット時刻以降に `completed_units` の続きから再開する。**「待たずに同じ Agent をすぐ再起動する」は禁止** (制限がさらに長引く)。
 
+### 原則 9: Agent に渡すプロンプトを省略しない
+
+- Agent に渡すプロンプトは、各工程の雛形 (`research/image_exclusion_prompt.md` 等) の **全文** を渡す。親 Claude の判断で要約版・簡略版を作らない。
+- 実例: 2026_05_15_10_00 run で親のトークン節約のため簡略版に切り替えた際、「画像を必ず Read してから判定」等の必須指示が抜け落ち、Sonnet が画像を見ず辞書判定にショートカットした (run_notes §3.2)。
+- 原則 7 (親は軽作業に徹する) と両立させるため、トークン節約は **ビルドスクリプトで完成プロンプトをファイルに書き出して** 対応する (例: `build_*_prompt.js`)。親が手でプロンプトを削るのは禁止。
+
 ---
 
 ## run_notes.md の運用
@@ -717,16 +723,23 @@ EOF
 
 担当割り当て: Agent N (N = 1, 2, ...) は `batch_{2*(N-1):03d}` 〜 `batch_{2*(N-1)+1:03d}` の 2 バッチ (= 100 件) を担当。総 Agent 数は `ceil(total_batches / 2)`、最後の Agent は 1 バッチでもよい。
 
-Claude Code の Agent ツール呼び出し例:
+Agent に渡すプロンプトは **手で組まず `build_image_exclusion_prompt.js` で生成する** (原則 9: 判定基準を要約・省略しない)。担当バッチ番号を渡すと、雛形 `research/image_exclusion_prompt.md` に判定基準 (`research/exclude_criteria.md`)・バッチパス・結果パスを差し込んだ完成プロンプトを `<run-dir>/image_review/prompts/prompt_for_batches_NNN_NNN.md` に書き出す。
+
+```bash
+# Agent N (= batch 2*(N-1), 2*(N-1)+1 を担当) のプロンプトを生成
+node research/build_image_exclusion_prompt.js research/runs/<ts> <batch-num> [batch-num ...]
+# 例: Agent 1 = batch 0,1
+node research/build_image_exclusion_prompt.js research/runs/<ts> 0 1
+```
+
+生成された prompt ファイルの中身を Agent ツールの `prompt` 引数に渡す:
 
 ```
 Agent({
   description: "image_exclusion Agent NN",
   subagent_type: "general-purpose",
   model: "sonnet",
-  prompt: <research/image_exclusion_prompt.md の「プロンプト本文」全文 +
-           {BATCH_PATHS} を担当 2 バッチの絶対パス改行区切りで置換 +
-           {RESULT_PATHS} を 2 結果ファイル (batch_NNN_result.json) の絶対パス改行区切りで置換>
+  prompt: <上記 prompt_for_batches_NNN_NNN.md の全文>
 })
 ```
 

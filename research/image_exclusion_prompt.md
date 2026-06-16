@@ -2,7 +2,7 @@
 
 第 4 段階の画像除外 (本番リサーチパイプラインの二次フィルタ) で Sonnet Agent に渡すプロンプト。
 
-**使い方**: 下記「プロンプト本文」全文をコピーし、`{BATCH_PATHS}` と `{RESULT_PATHS}` を実パス (改行区切りの複数行可) に置換して Agent (`subagent_type=general-purpose`, `model=sonnet`) の `prompt` 引数に渡す。
+**使い方**: 手で組み立てず `research/build_image_exclusion_prompt.js` を使う。同スクリプトが下記「プロンプト本文」の `{CRITERIA}` (= `research/exclude_criteria.md`)・`{BATCH_PATHS}`・`{RESULT_PATHS}` を差し込んだ完成プロンプトを `<run-dir>/image_review/prompts/prompt_for_batches_NNN_NNN.md` に書き出す。それを Agent (`subagent_type=general-purpose`, `model=sonnet`) の `prompt` 引数に渡す。**判定基準を親 Claude の判断で要約・省略しない** (mercari-research-v2.md 原則 9)。
 
 ---
 
@@ -48,9 +48,11 @@
 
 ## 除外カテゴリ
 
-判定基準の一次資料は `procedures/exclude_by_keywords/keywords.json` の `priority` 配列。各カテゴリ名 (food / plant_quarantine / medical / cosmetics_yakki / character_copyright / brand_imitation / electronics_check / handmade / underwear / sourcing_unavailable / media 等、辞書追加で増える可能性あり) は禁止理由を表す。
+カテゴリ名・キーワードは `procedures/exclude_by_keywords/keywords.json` の `priority` 配列に対応 (food / plant_quarantine / medical / cosmetics_yakki / character_copyright / brand_imitation / electronics_check / handmade / underwear / sourcing_unavailable / media / korea 等、辞書追加で増える可能性あり)。各カテゴリの法令根拠原文は `references/注意商品.pdf` (page 5-6 の法令一覧、page 1-4 のブランド・キャラ例) に記載。**疑わしい/判定迷う場合は PDF を直接 Read して原文に当たること** (詳細は判定フローの e を参照)。
 
-各カテゴリの法令根拠原文は `references/注意商品.pdf` (page 5-6 の法令一覧、page 1-4 のブランド・キャラ例) に記載。判定基準の整理版は `procedures/exclude_by_keywords_precision_check/agent_prompt_unflagged.md` の「除外カテゴリの定義」「連想デザイン NG 一覧」「その他の法令注意点」「短語誤爆に惑わされない」セクションに集約済 (本プロンプトでは重複を避ける)。**疑わしい/判定迷う場合は PDF を直接 Read して原文に当たること** (詳細は判定フローの e を参照)。
+判定基準は以下のとおり (単一ソース `research/exclude_criteria.md` をビルド時に差し込む):
+
+{CRITERIA}
 
 ## 判定フロー (バッチごとに逐次保存)
 
