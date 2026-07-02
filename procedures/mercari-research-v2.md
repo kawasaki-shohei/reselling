@@ -1783,3 +1783,46 @@ node research/build_final_report.js \
 ```
 
 stdout に書き出し結果 (outPath / totalClusters / purchaseCandidates / rows / columns) の JSON が出る。
+
+---
+
+## レポートの Web UI 公開 (reselling-web)
+
+第 7 段階で書き出した CSV を、別リポジトリ `reselling-web` (Cloudflare Workers) の Web UI に載せ、物販オーナーがブラウザで仕入れ候補を閲覧・判定 (status / note を付与) できる形にする。第 7 段階の後に行う。
+
+`reselling-web` の場所・全体仕様・ローカル開発・デプロイ・D1 適用は **`reselling-web/README.md` を正とする**。本節は本手順書側の成果物 (CSV / final_clusters.json / 生データ) を Web UI へ渡す部分に絞る。
+
+### 入出力
+
+- **入力** (いずれも本手順書の run の成果物):
+  - 第 7 段階 CSV (絶対パスを CLI 引数で明示指定)
+  - `research/runs/<ts>/identity_resolution/final_clusters.json` (run_id から自動参照)
+  - `research/<ts>__mercari_14day_results.json` (run_id から自動参照)
+- **出力**:
+  - `reselling-web/public/reports/<run_id>/index.html`
+
+### run_id の指定 (注意)
+
+`build_html.js` の第 1 引数 `<run_id>` には **run ディレクトリ名 (`<ts>`、例 `2026_06_16_21_45`) を渡す**。CSV ファイル名の日付プレフィックス (例 `2026_06_19_01`) ではない。スクリプトが `final_clusters.json` と生データを `<ts>` から組み立てて読むため、ここを取り違えると入力が見つからずエラーになる。
+
+### 手順
+
+1. `reselling-web` で HTML を生成する (`reselling-web` は `reselling` と同階層):
+
+```bash
+cd ../reselling-web
+node scripts/reports/build_html.js <run_id> <CSV の絶対パス>
+```
+
+例:
+
+```bash
+node scripts/reports/build_html.js 2026_06_16_21_45 \
+  /Users/kawasaki/Documents/work_source/2026_04_10_reselling/reselling_workspace/reselling/reports/2026/06/2026_06_19_01_メルカリ売れ筋リサーチ_v2.csv
+```
+
+2. stdout の `rowCount` が第 7 段階 CSV のデータ行数 (= `final_clusters.json` の `summary.purchaseCandidates`) と一致することを確認する。
+
+### 注意
+
+- 生成 HTML (`public/reports/<run_id>/index.html`) は run ごとに 1 ファイル。run_id が異なれば別ディレクトリなので、既存 run のファイルは上書きされない。
