@@ -31,7 +31,7 @@
 
 詳細は以下のドキュメントを **必ず Read してから** 属性抽出に入ること:
 
-- `/Users/kawasaki/Documents/work_source/2026_04_10_reselling/reselling/docs/research/mercari/judgment_examples/README.md`
+- `/Users/kawasaki/Documents/work_source/2026_04_10_reselling/reselling_workspace/reselling/docs/research/mercari/judgment_examples/README.md`
 
 ## 7 軸属性の定義
 

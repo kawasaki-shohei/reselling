@@ -41,7 +41,7 @@ procedures/cheapest-price-research.md の第 2 段階 (keyword_generation_step) 
 
 詳細は以下のドキュメントを **必ず Read してから** キーワード生成に入ること:
 
-- `/Users/kawasaki/Documents/work_source/2026_04_10_reselling/reselling/docs/research/mercari/judgment_examples/README.md`
+- `/Users/kawasaki/Documents/work_source/2026_04_10_reselling/reselling_workspace/reselling/docs/research/mercari/judgment_examples/README.md`
 
 ## 同一商品判定の軸 (キーワードに含めるべき要素)
 
