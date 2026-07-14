@@ -1818,7 +1818,7 @@ node scripts/reports/build_html.js <run_id> <CSV の絶対パス>
 
 ```bash
 node scripts/reports/build_html.js 2026_06_16_21_45 \
-  /Users/kawasaki/Documents/work_source/2026_04_10_reselling/reselling_workspace/reselling/reports/2026/06/2026_06_19_01_メルカリ売れ筋リサーチ_v2.csv
+  /Users/kawasaki/work_source/2026_04_10_reselling/reselling_workspace/reselling/reports/2026/06/2026_06_19_01_メルカリ売れ筋リサーチ_v2.csv
 ```
 
 2. stdout の `rowCount` が第 7 段階 CSV のデータ行数 (= `final_clusters.json` の `summary.purchaseCandidates`) と一致することを確認する。
