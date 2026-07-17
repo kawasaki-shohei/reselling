@@ -89,7 +89,7 @@ Agent 起動後、毎回以下をチェックする:
 
 Sonnet / Haiku いずれの Agent を起動する工程 (第 4 段階画像除外 / 第 5 段階 5-1・5-2・5-3 / 第 6 段階 6-2) は本原則を踏襲する。本原則は過去検証 (`procedures/exclude_by_keywords_precision_check/README.md` §7) の運用知見を本手順書に展開したものである。
 
-**最重要** — 本手順書の Agent 工程は **使用制限・レート制限で途中停止することを前提に設計されている**。件数が多い段階 (5-1 は 32 chunk / 5-3 は約 32 バッチ / 6-2 は pending グループ数だけ) は 1 日で完走できない想定で、**すべて中断再開できるように進める**。以下の原則を守らないと、ヒット時に判定が全損し最初からやり直しになる。
+**最重要** — 本手順書の Agent 工程は **使用制限・レート制限で途中停止することを前提に設計されている**。件数が多い段階 (5-1 は 32 chunk / 5-3 は約 32 バッチ / 6-2 は pack 数だけ) は 1 日で完走できない想定で、**すべて中断再開できるように進める**。以下の原則を守らないと、ヒット時に判定が全損し最初からやり直しになる。
 
 ### 原則 1: 1 Agent あたりの担当数
 
@@ -271,8 +271,11 @@ SendMessage({
      └─ 属性: color / size / quantity / pattern / material
 6. 同一商品判定 (identity_resolution_step) (LLM + 画像)
      6 軸 (category/subcategory/color/size/quantity/pattern) で完全一致グループを作り、
-     2 件以上の仮クラスタは LLM に画像 + タイトルを見せて subgroup に仕分け
+     2 件以上かつ count_total >= 3 の仮クラスタのみ LLM に画像 + タイトルを見せて subgroup に仕分け
+       (複数の仮クラスタを合計 50 件まで 1 Agent にまとめ渡しする)
      1 件のみの仮クラスタ (singleton) は LLM 判定を省略して単独クラスタとして確定
+     count_total < 3 の仮クラスタも LLM 判定を省略 (6-2 は分割のみでグループ間の合流は
+     しないため、どう分割しても仕入れ候補条件 3 件以上に届かない)
 7. 仕入れ候補書き出し (purchase_candidate_export_step)
      is_purchase_candidate=true のクラスタ (count_total >= 3) のみを CSV に書き出す
      出力: reports/YYYY/MM/YYYY_MM_DD_NN_メルカリ売れ筋リサーチ_v2.csv
@@ -1377,19 +1380,29 @@ visual_extraction/visual_full.json (属性付き、約 4,800 件)
   6-1 Node 仮クラスタリング (build_identity_clusters.js)
     6 軸完全一致 (category + subcategory + color + size + quantity + pattern、null=null)
     material は軸外 (6-2 Agent の画像判定時の補助として渡す)
-    サイズ 1 → 単独確定、サイズ 2+ → Sonnet 判定待ち
+    各グループに count_total (= グループ内全 row の ids 合計 = 14 日 SOLD 件数) を付与し、
+    status を 3 種に振り分け:
+      サイズ 1                     → singleton_confirmed (単独確定)
+      サイズ 2+ かつ count_total>=3 → pending (Sonnet 判定待ち)
+      サイズ 2+ かつ count_total<3  → skipped_below_threshold (判定スキップ。
+        6-2 は分割のみでグループ間の合流はないため、仕入れ候補になり得ない)
   ↓
 identity_resolution/clusters.json (仮クラスタ一覧)
   ↓
-  6-2 同一商品判定 (Sonnet + 画像、サイズ 2+ の各仮クラスタごと)
-    仮クラスタ 1 つ = 1 Agent 呼出
-    50 件超のみサブ分割 (50 件ずつ、境界またぎは明日以降回しで許容)
+  6-2 同一商品判定 (Sonnet + 画像、pending の仮クラスタのみ)
+    まとめ渡し: 複数の仮クラスタを合計 50 件まで詰めた pack 1 つ = 1 Agent 呼出
+      (build_identity_resolution_packed_prompts.js が pack を組む。
+       Agent は仮クラスタ 1 つ判定完了ごとに result_group_<gid>.json を即 Write)
+    50 件超の仮クラスタのみ従来どおりサブ分割 (50 件ずつ、1 サブバッチ = 1 Agent、
+      境界またぎは許容)
     Agent は画像 + タイトルから subgroup に仕分け
   ↓
 identity_resolution/results/result_group_*.json
   ↓
   6-3 最終 cluster_id 採番 (assign_final_cluster_ids.js)
     singleton + Agent 判定結果を集約
+    skipped_below_threshold のグループは判定結果を読まず、cluster_id 未採番の
+      1 エントリ (source=skipped_below_threshold, is_purchase_candidate=false) として素通し
     cluster_id = {category}_{subcategory}_{連番3桁}
     各クラスタに count_total (= ids 合計 = 14 日 SOLD 件数) を付与
     count_total >= 3 のクラスタに is_purchase_candidate=true
@@ -1401,9 +1414,10 @@ identity_resolution/final_clusters.json (仕入れ候補付き最終成果)
 
 | 処理 | 実行者 | 入力 | 出力 |
 |---|---|---|---|
-| 6-1 仮クラスタリング | スクリプト (`build_identity_clusters.js`) | `visual_extraction/visual_full.json` | `identity_resolution/clusters.json` |
-| 6-2 プロンプト組立 | スクリプト (`build_identity_resolution_prompt.js`) | `identity_resolution_prompt.md` + `clusters.json` | `identity_resolution/prompts/prompt_group_<groupId>.md` |
-| 6-2 同一商品判定 | Sonnet agent (画像 + タイトル) | プロンプト + 画像 webp | `identity_resolution/results/result_group_<groupId>.json` |
+| 6-1 仮クラスタリング | スクリプト (`build_identity_clusters.js`) | `visual_extraction/visual_full.json` + `image_review/filtered_unflagged.json` (count_total 集計用) | `identity_resolution/clusters.json` |
+| 6-2 プロンプト組立 (まとめ渡し、標準) | スクリプト (`build_identity_resolution_packed_prompts.js`) | `identity_resolution_prompt.md` + `clusters.json` | `identity_resolution/prompts/prompt_pack_NNN.md` (pending グループを合計 50 件まで詰めた pack ごと) |
+| 6-2 プロンプト組立 (50 件超のサブ分割用) | スクリプト (`build_identity_resolution_prompt.js`) | `identity_resolution_prompt.md` + `clusters.json` | `identity_resolution/prompts/prompt_group_<groupId>_sub_NN.md` |
+| 6-2 同一商品判定 | Sonnet agent (画像 + タイトル) | プロンプト + 画像 webp | `identity_resolution/results/result_group_<groupId>.json` (pack 内の仮クラスタごとに 1 ファイル) |
 | 6-3 最終 cluster_id 採番 | スクリプト (`assign_final_cluster_ids.js`) | `clusters.json` + `results/*.json` + `image_review/filtered_unflagged.json` | `identity_resolution/final_clusters.json` |
 
 ### 6-1 Node 仮クラスタリング (build_identity_clusters.js)
@@ -1414,7 +1428,12 @@ identity_resolution/final_clusters.json (仕入れ候補付き最終成果)
 - null は文字列 `"null"` 扱い (null=null の完全一致)
 - color は配列、ソートして join
 - material は軸外 (判定困難で揺れやすいため、6-2 Agent の補助情報として渡す)
-- 各グループにサイズを記録し、サイズ 1 は `singleton_confirmed` (Agent 判定不要)、サイズ 2+ は `pending` (Agent 判定対象)
+- `image_review/filtered_unflagged.json` を読み、各グループに `count_total` (= グループ内全 row の `ids` 合計 = 14 日 SOLD 件数) を付与する
+- 各グループの `status` は 3 種:
+  - サイズ 1 → `singleton_confirmed` (Agent 判定不要)
+  - サイズ 2+ かつ `count_total >= 3` → `pending` (Agent 判定対象)
+  - サイズ 2+ かつ `count_total < 3` → `skipped_below_threshold` (Agent 判定スキップ。6-2 はグループ内の分割のみでグループ間の合流はしないため、`count_total < 3` のグループはどう分割しても仕入れ候補条件に届かない。なお `count_total >= size` なので、実際にスキップされるのはサイズ 2 のグループのみ)
+- 閾値 3 の正本は `research/_purchase_threshold.js` の `PURCHASE_THRESHOLD` (6-3 の仕入れ候補判定と共用。スキップ基準と候補基準がずれないように 1 箇所に置く)
 
 ```bash
 node research/build_identity_clusters.js \
@@ -1426,12 +1445,13 @@ node research/build_identity_clusters.js \
 
 ```json
 {
-  "summary": { "totalRows": 4733, "groupCount": 1234, "singletonGroups": 567, "multiItemGroups": 667 },
+  "summary": { "totalRows": 4733, "groupCount": 1234, "singletonGroups": 567, "multiItemGroups": 667, "pendingGroups": 395, "skippedBelowThresholdGroups": 272, "purchaseThreshold": 3 },
   "groups": [
     {
       "groupId": 0,
       "groupKey": "category=ショーツ|subcategory=キッズショーツ|color=[ブラック]|size=100cm|quantity=4枚|pattern=無地",
       "size": 3,
+      "count_total": 4,
       "status": "pending",
       "items": [
         {
@@ -1458,15 +1478,30 @@ node research/build_identity_clusters.js \
 
 ### 6-2 同一商品判定 (Sonnet + 画像)
 
-仮クラスタ内の 2+ 件の商品が画像とタイトルを見て本当に同じ商品かを Sonnet に判定させる。
+`status="pending"` の仮クラスタ内の 2+ 件の商品が、画像とタイトルを見て本当に同じ商品かを Sonnet に判定させる。`singleton_confirmed` と `skipped_below_threshold` のグループは判定しない。
 
-#### プロンプト組立
+#### プロンプト組立 (まとめ渡し、標準)
+
+1 Agent = 1 グループでは Agent 起動のたびに払う固定コスト (システムプロンプト等) が判定本体を上回るため、**複数の pending グループを合計 50 件まで 1 つの pack に詰めて 1 Agent に渡す**。上限 50 件は単グループの実績上限 (`SUB_BATCH_SIZE`) と同じで、1 Agent あたりの仕事量は従来を超えない。判定 1 件あたりの入力 (仕様プロンプト本体 + 画像 + タイトル + attributes) は従来と同一。
+
+```bash
+node research/build_identity_resolution_packed_prompts.js research/runs/<ts>
+```
+
+- `status="pending"` のグループを groupId 順に前から詰め、`prompts/prompt_pack_NNN.md` を pack ごとに出力する
+- stdout に pack 一覧 (`packs[].groupIds` / `itemCount` / `promptPath`) と、50 件超でサブ分割が必要なグループ (`subSplitRequiredGroupIds`) が JSON で出る
+- pack プロンプトは仕様プロンプト本体の末尾に「## まとめ渡し」セクションを追記した形。各仮クラスタを **完全に独立して判定** し (グループをまたいで見比べない)、**仮クラスタ 1 つの判定完了ごとに `result_group_<gid>.json` を即 Write** するよう指示している (中断時は未出力グループだけやり直す。共通原則 3 と同じ理由)
+- 結果ファイルの形式・パスは従来の 1 グループ = 1 ファイルのまま (6-3 は無変更で集約できる)
+
+#### プロンプト組立 (50 件超のサブ分割用)
+
+50 件超の仮クラスタは pack に入れず、従来どおり 1 グループずつサブ分割する:
 
 ```bash
 node research/build_identity_resolution_prompt.js <groupId> research/runs/<ts>
 ```
 
-50 件以下の仮クラスタは 1 プロンプト、50 件超はサブ分割して複数プロンプト (`prompt_group_<gid>_sub_NN.md`) を出力する。サブ分割間の境界またぎは本手順書 v2 の現行バージョンでは許容 (取りこぼし、サブバッチ間で同一商品が別クラスタ扱いになる可能性あり)。将来サブ分割が頻発するほど大きい仮クラスタが本番で多発した場合、2 周目判定の仕組みを別途設計する。
+サブ分割して複数プロンプト (`prompt_group_<gid>_sub_NN.md`) を出力する (1 サブバッチ = 1 Agent)。サブ分割間の境界またぎは本手順書 v2 の現行バージョンでは許容 (取りこぼし、サブバッチ間で同一商品が別クラスタ扱いになる可能性あり)。将来サブ分割が頻発するほど大きい仮クラスタが本番で多発した場合、2 周目判定の仕組みを別途設計する。
 
 #### プロンプトに埋め込まれる情報と material の引き渡し方
 
@@ -1475,7 +1510,7 @@ node research/build_identity_resolution_prompt.js <groupId> research/runs/<ts>
 ```
 - rowIndex=163, id=m99306383103
   name: 【4枚セット】女の子 ショーツ 女児 パンツ 下着 肌着 100cm
-  imagePath: `/absolute/path/to/runs/<ts>/images/163.webp`
+  imagePath: `/absolute/path/to/runs/<ts>/image_review/images/163.webp`
   attributes: `{"category":"ショーツ","subcategory":"キッズショーツ","color":["ブラック"],"size":"100cm","quantity":"4枚","pattern":"無地","material":"綿"}`
 ```
 
@@ -1491,13 +1526,13 @@ node research/build_identity_resolution_prompt.js <groupId> research/runs/<ts>
 
 #### Agent 起動と運用
 
-Agent (`subagent_type=general-purpose`, `model=sonnet`) に上記プロンプトを渡す。Agent は各行の画像を Read し、仮クラスタ内を subgroup に仕分けて出力パスに JSON を書き出す。
+Agent (`subagent_type=general-purpose`, `model=sonnet`) に上記プロンプトを渡す。Agent は各行の画像を Read し、仮クラスタごとに subgroup に仕分けて、仮クラスタ 1 つ完了ごとに出力パスへ JSON を書き出す。
 
 **本工程は冒頭「## Agent 運用の共通原則」を必ず踏襲する**:
 
-- **1 Agent = 1 グループ (pending、size 2〜50) を標準**、並列起動禁止 (共通原則 1)
+- **1 Agent = 1 pack (pending グループを合計 50 件まで詰めたもの) を標準**、並列起動禁止 (共通原則 1)
   - size 50 超のグループのみサブ分割し、サブバッチ 1 個 = 1 Agent 呼出 (50 件)
-  - 出力ファイルは `result_group_<gid>.json` として groupId 別に分ける設計のため、1 Agent に複数グループを詰め込まない
+  - 出力ファイルは pack でも従来どおり `result_group_<gid>.json` として groupId 別に分かれる (Agent が仮クラスタ完了ごとに逐次 Write する)
 - `agentId` を必ず控え、停止時は SendMessage で復帰 (共通原則 5)
 - 親 Claude は画像 Read しない (共通原則 7、スポットチェック時のみ例外)
 
@@ -1517,14 +1552,15 @@ Agent (`subagent_type=general-purpose`, `model=sonnet`) に上記プロンプト
 }
 ```
 
-- `completed_units` の要素 = **groupId** (`clusters.json` の pending グループ ID、非負整数)
-- `total_units` = pending グループ数 (= `clusters.json` の `summary.multiItemGroups`)
+- `completed_units` の要素 = **groupId** (`clusters.json` の pending グループ ID、非負整数)。pack 単位ではなく groupId 単位で記録する (pack Agent が途中停止しても、書き出し済みグループは completed にできる)
+- `total_units` = pending グループ数 (= `clusters.json` の `summary.pendingGroups`。`skipped_below_threshold` は含めない)
 - サブ分割されたグループは、**全サブバッチの出力が揃ってから** groupId を `completed_units` に追加する
-- 更新タイミング: `result_group_<gid>.json` (または `result_group_<gid>_sub_NN.json` 全件) の書き出しと検証が完了した直後
+- 更新タイミング: `result_group_<gid>.json` (または `result_group_<gid>_sub_NN.json` 全件) の書き出しと検証が完了した直後。pack Agent の完了時は pack 内の全 groupId を検証してまとめて追加してよい
+- pack Agent が途中停止した場合の再開: まず SendMessage で復帰を試みる (共通原則 5)。Agent を破棄した場合は **同じ pack プロンプトを新規 Agent に渡してよい** (pack プロンプトは「出力ファイルが既に存在する仮クラスタはスキップ」と指示しているため、判定済みグループの二重判定・上書きは起きない)
 
 ##### 実ファイル検証項目 (各グループごと、共通原則 4)
 
-1. `identity_resolution/results/result_group_<gid>.json` (サブ分割なしの場合) または `result_group_<gid>_sub_NN.json` (サブ分割の場合) がすべて存在し JSON として Parse 可能
+1. `identity_resolution/results/result_group_<gid>.json` (pack の場合は pack 内の全 groupId 分) または `result_group_<gid>_sub_NN.json` (サブ分割の場合) がすべて存在し JSON として Parse 可能
 2. ルート構造が `{groupId, groupKey, subgroups: [...]}` である
 3. `subgroups[].rowIndexes` の和集合が仮クラスタの items 全 rowIndex と一致 (過不足なし、重複なし)
 4. `identity_resolution/clusters.json` と使用した画像 webp の mtime が Agent 起動前と同じ
@@ -1568,6 +1604,7 @@ node research/assign_final_cluster_ids.js research/runs/<ts>
 処理内容:
 
 - singleton グループは 1 クラスタとして確定
+- `skipped_below_threshold` のグループは判定結果を読まず (過去 run の結果ファイルが存在しても無視)、cluster_id 未採番の 1 エントリ (`source="skipped_below_threshold"`, `is_purchase_candidate=false`) として素通しする。同一か別かを判定していないので採番しない。第 7 段階 CSV と Web UI は `is_purchase_candidate=true` しか読まないため出力に影響しない
 - pending グループは `result_group_*.json` を読み、subgroup ごとに 1 クラスタを作る
 - サブ分割されたグループは `result_group_<gid>_sub_NN.json` を全部読んで結合 (サブ分割境界またぎは現状 2 周目判定をしないので、別 subgroup として扱う)
 - cluster_id = `{category}_{subcategory}_{連番3桁}` (連番は prefix ごと、例: `ショーツ_キッズショーツ_001`)
@@ -1579,7 +1616,7 @@ node research/assign_final_cluster_ids.js research/runs/<ts>
 - `research/runs/<ts>/identity_resolution/final_clusters.json`
 - `is_purchase_candidate=true` のクラスタが仕入れ候補 (`count_total` = 14 日 SOLD 件数の合計が 3 件以上で売れ筋と判断)
 
-第 6 段階完了時点で仕入れ候補クラスタの特定が終わる。次の第 7 段階 (`purchase_candidate_export_step`) で `is_purchase_candidate=true` のクラスタのみを CSV に書き出して物販オーナーに渡す。
+第 6 段階完了時点で仕入れ候補クラスタの特定が終わる。次の第 7 段階 (`purchase_candidate_export_step`) で `is_purchase_candidate=true` のクラスタのみを CSV に書き出して物販オーナーに渡す。``
 
 ---
 
@@ -1641,9 +1678,10 @@ research/runs/YYYY_MM_DD_HH_MM/                   # 1 回のリサーチ run の
 │   └── visual_full.json                          #   全 results/ を結合した最終成果物 (第 6 段階への入力)
 └── identity_resolution/                          # 第 6 段階 同一商品判定
     ├── progress.json                             #   [6-2] 中断再開管理 (共通原則 2 のスキーマ、completed_units は groupId)
-    ├── clusters.json                             #   6-1 Node 仮クラスタリング出力 (groups 配列、singleton / pending)
-    ├── prompts/                                  #   6-2 各グループ用プロンプト
-    │   └── prompt_group_<groupId>.md             #     identity_resolution_prompt.md 本体 + 仮クラスタ情報
+    ├── clusters.json                             #   6-1 Node 仮クラスタリング出力 (groups 配列、singleton / pending / skipped_below_threshold、count_total 付き)
+    ├── prompts/                                  #   6-2 各 Agent 用プロンプト
+    │   ├── prompt_pack_NNN.md                    #     まとめ渡し用 (pending グループを合計 50 件まで詰めた pack、標準)
+    │   └── prompt_group_<groupId>_sub_NN.md      #     50 件超グループのサブ分割用
     ├── results/                                  #   6-2 Sonnet agent 生出力 (不変)
     │   └── result_group_<groupId>.json
     └── final_clusters.json                       #   6-3 最終 cluster_id 付与済 + 仕入れ候補フラグ
@@ -1684,10 +1722,13 @@ research/build_visual_extraction_batches.js                    # 第 5 段階 �
 research/inherit_visual_extraction.js                          # 第 5 段階 視覚属性抽出 過去 run の判定結果引き継ぎ (任意)
 research/visual_extraction_prompt.md                           # 第 5 段階 視覚属性抽出 agent に渡すプロンプト本体
 research/build_visual_extraction_prompt.js                     # 第 5 段階 視覚属性抽出 バッチごとのプロンプト組立 (vocab 埋め込み)
-research/build_identity_clusters.js                            # 第 6 段階 工程 6-1 Node 仮クラスタリング
+research/build_identity_clusters.js                            # 第 6 段階 工程 6-1 Node 仮クラスタリング (count_total 付与 + 判定スキップ振り分け)
 research/identity_resolution_prompt.md                         # 第 6 段階 工程 6-2 agent に渡すプロンプト本体
-research/build_identity_resolution_prompt.js                   # 第 6 段階 工程 6-2 グループごとのプロンプト組立
+research/build_identity_resolution_packed_prompts.js           # 第 6 段階 工程 6-2 まとめ渡しプロンプト組立 (pending グループを合計 50 件/pack に詰める、標準)
+research/build_identity_resolution_prompt.js                   # 第 6 段階 工程 6-2 グループごとのプロンプト組立 (50 件超のサブ分割用)
 research/assign_final_cluster_ids.js                           # 第 6 段階 工程 6-3 最終 cluster_id 採番 + 仕入れ候補フラグ
+research/_purchase_threshold.js                                # 第 6 段階の共通定数 PURCHASE_THRESHOLD (6-1 スキップ判定と 6-3 候補判定が共用、内部ヘルパー)
+research/_row_counts.js                                        # 第 6 段階の共通ロジック rowIndex→SOLD 件数 Map (6-1 と 6-3 が共用、内部ヘルパー)
 research/build_final_report.js                                 # 第 7 段階 is_purchase_candidate=true のクラスタを CSV に書き出し
 research/_classifier.js                                        # 第 3・4 段階の共通ロジック (内部ヘルパー)
 research/_run_paths.js                                         # 第 2〜4 段階の <ts> 抽出・出力ディレクトリ導出 (内部ヘルパー)

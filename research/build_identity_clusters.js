@@ -9,6 +9,13 @@
  * - color は配列、ソートして join する
  * - material はクラスタ軸に含めない (判定困難なため、6-2 で画像判定時の補助として使う)
  *
+ * 各グループに count_total (= グループ内全 row の ids 合計 = 14 日 SOLD 件数) を付与し、
+ * 2 件以上のグループでも count_total < PURCHASE_THRESHOLD なら
+ * status="skipped_below_threshold" として 6-2 の Agent 判定をスキップする。
+ * Why: 6-2 はグループ内の分割のみでグループ間の合流はしないため、
+ * count_total が閾値未満のグループはどう分割しても仕入れ候補 (count_total >= 閾値)
+ * になり得ず、判定してもレポート出力に影響しない。
+ *
  * 使い方:
  *   node research/build_identity_clusters.js <input-attributes-json> <run-dir>
  *
@@ -32,6 +39,8 @@
 const fs = require("node:fs");
 const path = require("node:path");
 const { writeFileSafe } = require("./_safe_write");
+const { PURCHASE_THRESHOLD } = require("./_purchase_threshold");
+const { loadRowSoldCounts, totalSoldCount } = require("./_row_counts");
 
 const CLUSTER_AXES = [
   "category",
@@ -68,7 +77,13 @@ function buildGroupKey(attrs) {
   );
 }
 
-function clusterRows(rows) {
+function decideGroupStatus(items, countTotal) {
+  if (items.length === 1) return "singleton_confirmed";
+  if (countTotal < PURCHASE_THRESHOLD) return "skipped_below_threshold";
+  return "pending";
+}
+
+function clusterRows(rows, rowSoldCounts) {
   const map = new Map();
   for (const r of rows) {
     const key = buildGroupKey(r.attributes);
@@ -85,11 +100,13 @@ function clusterRows(rows) {
   for (let i = 0; i < keys.length; i++) {
     const key = keys[i];
     const items = map.get(key);
+    const countTotal = totalSoldCount(items, rowSoldCounts);
     groups.push({
       groupId: i,
       groupKey: key,
       size: items.length,
-      status: items.length === 1 ? "singleton_confirmed" : "pending",
+      count_total: countTotal,
+      status: decideGroupStatus(items, countTotal),
       items,
     });
   }
@@ -98,7 +115,11 @@ function clusterRows(rows) {
 
 function summarize(groups) {
   const singleton = groups.filter((g) => g.status === "singleton_confirmed");
-  const multi = groups.filter((g) => g.status === "pending");
+  const pending = groups.filter((g) => g.status === "pending");
+  const skipped = groups.filter(
+    (g) => g.status === "skipped_below_threshold",
+  );
+  const multi = groups.filter((g) => g.size > 1);
   const sizeBuckets = { "1": 0, "2": 0, "3-4": 0, "5-9": 0, "10-19": 0, "20-49": 0, "50+": 0 };
   for (const g of groups) {
     const s = g.size;
@@ -119,6 +140,9 @@ function summarize(groups) {
     groupCount: groups.length,
     singletonGroups: singleton.length,
     multiItemGroups: multi.length,
+    pendingGroups: pending.length,
+    skippedBelowThresholdGroups: skipped.length,
+    purchaseThreshold: PURCHASE_THRESHOLD,
     sizeBuckets,
     largestGroupSize: maxGroup.size,
     largestGroupKey: maxGroup.key,
@@ -131,7 +155,8 @@ function main() {
   if (!Array.isArray(rows)) {
     throw new Error(`expected top-level array in ${inputPath}`);
   }
-  const groups = clusterRows(rows);
+  const rowSoldCounts = loadRowSoldCounts(runDir);
+  const groups = clusterRows(rows, rowSoldCounts);
   const summary = summarize(groups);
 
   const outDir = path.join(runDir, "identity_resolution");
@@ -149,4 +174,10 @@ if (require.main === module) {
   main();
 }
 
-module.exports = { buildGroupKey, clusterRows, summarize, CLUSTER_AXES };
+module.exports = {
+  buildGroupKey,
+  clusterRows,
+  decideGroupStatus,
+  summarize,
+  CLUSTER_AXES,
+};

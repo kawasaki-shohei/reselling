@@ -13,7 +13,7 @@
  * 入力:
  *   research/identity_resolution_prompt.md (仕様プロンプト本体、固定)
  *   <run-dir>/identity_resolution/clusters.json (6-1 出力)
- *   <run-dir>/images/{rowIndex}.webp (画像パス確認用)
+ *   <run-dir>/image_review/images/{rowIndex}.webp (第 4 段階が DL 済みの実体画像)
  *
  * 出力:
  *   <run-dir>/identity_resolution/prompts/prompt_group_<groupId>.md
@@ -65,6 +65,12 @@ function loadCluster(runDir, groupId) {
   if (group.status === "singleton_confirmed") {
     throw new Error(
       `group ${groupId} is singleton_confirmed; no prompt needed for 1-item groups`,
+    );
+  }
+  if (group.status === "skipped_below_threshold") {
+    throw new Error(
+      `group ${groupId} is skipped_below_threshold; ` +
+        "count_total が閾値未満のため 6-2 の判定対象外 (プロンプト生成不要)",
     );
   }
   return group;
@@ -125,7 +131,10 @@ function main() {
   const { groupId, runDir } = parseArgs();
   const idDir = path.join(runDir, "identity_resolution");
   const promptsDir = path.join(idDir, "prompts");
-  const imagesDir = path.resolve(path.join(runDir, "images"));
+  // 画像の実体は第 4 段階 (画像除外) が DL した image_review/images/ にある。
+  // 以前は <run-dir>/images を参照しており、run ごとに symlink で回避していた
+  // (run_notes 2026_06_02_09_10 §3.4 / 2026_06_16_21_45 の既知問題)。
+  const imagesDir = path.resolve(path.join(runDir, "image_review", "images"));
   fs.mkdirSync(promptsDir, { recursive: true });
 
   const group = loadCluster(runDir, groupId);
@@ -210,4 +219,4 @@ if (require.main === module) {
   main();
 }
 
-module.exports = { buildTailSection, SUB_BATCH_SIZE };
+module.exports = { buildItemsSection, buildTailSection, SUB_BATCH_SIZE };

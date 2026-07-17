@@ -6,6 +6,11 @@
  * 6-1 の clusters.json と 6-2 の results/*.json を集約し、
  * 各商品に cluster_id を付与して仕入れ候補フラグを立てる。
  *
+ * 6-1 で status="skipped_below_threshold" になったグループ (count_total が閾値未満で
+ * 6-2 の判定をスキップしたもの) は、同一/別の判定をしていないため cluster_id を
+ * 採番せず、source="skipped_below_threshold" の 1 エントリとしてそのまま残す
+ * (is_purchase_candidate は常に false。第 7 段階 CSV / Web UI は候補のみ読むため出力不変)。
+ *
  * 使い方:
  *   node research/assign_final_cluster_ids.js <run-dir>
  *
@@ -29,8 +34,8 @@
 const fs = require("node:fs");
 const path = require("node:path");
 const { writeFileSafe } = require("./_safe_write");
-
-const PURCHASE_THRESHOLD = 3;
+const { PURCHASE_THRESHOLD } = require("./_purchase_threshold");
+const { loadRowSoldCounts, totalSoldCount } = require("./_row_counts");
 
 function parseArgs() {
   const [, , runDirArg] = process.argv;
@@ -76,23 +81,6 @@ function loadResultsForGroup(resultsDir, groupId) {
   );
 }
 
-function loadRowCounts(runDir) {
-  const filteredPath = path.join(runDir, "image_review", "filtered_unflagged.json");
-  if (!fs.existsSync(filteredPath)) {
-    throw new Error(`filtered_unflagged.json does not exist: ${filteredPath}`);
-  }
-  const filtered = JSON.parse(fs.readFileSync(filteredPath, "utf8"));
-  const m = new Map();
-  for (const r of filtered.rows) m.set(r.rowIndex, r.ids.length);
-  return m;
-}
-
-function totalIdsCount(items, rowCounts) {
-  let s = 0;
-  for (const it of items) s += rowCounts.get(it.rowIndex) ?? 1;
-  return s;
-}
-
 function buildFinalClusters({ groups, resultsDir, rowCounts }) {
   const prefixCounter = new Map();
   const finalClusters = [];
@@ -114,7 +102,7 @@ function buildFinalClusters({ groups, resultsDir, rowCounts }) {
 
     if (g.status === "singleton_confirmed") {
       const cid = nextId(category, subcategory);
-      const countTotal = totalIdsCount(g.items, rowCounts);
+      const countTotal = totalSoldCount(g.items, rowCounts);
       finalClusters.push({
         cluster_id: cid,
         source: "singleton",
@@ -133,6 +121,29 @@ function buildFinalClusters({ groups, resultsDir, rowCounts }) {
       continue;
     }
 
+    if (g.status === "skipped_below_threshold") {
+      // 6-1 で判定スキップ済み (count_total < 閾値 → どう分割しても候補になれない)。
+      // 同一か別かは判定していないため cluster_id は採番しない。
+      // 過去 run の結果ファイルが存在しても読まない (status が正)。
+      finalClusters.push({
+        cluster_id: null,
+        source: "skipped_below_threshold",
+        source_group_id: g.groupId,
+        group_key: g.groupKey,
+        size: g.items.length,
+        count_total: totalSoldCount(g.items, rowCounts),
+        is_purchase_candidate: false,
+        representative_attributes: g.items[0].attributes,
+        items: g.items.map((it) => ({
+          rowIndex: it.rowIndex,
+          id: it.id,
+          name: it.name,
+        })),
+        note: "count_total が閾値未満のため 6-2 の同一商品判定をスキップ (仕入れ候補になり得ない)",
+      });
+      continue;
+    }
+
     const results = loadResultsForGroup(resultsDir, g.groupId);
     if (results.length === 0) {
       finalClusters.push({
@@ -141,7 +152,7 @@ function buildFinalClusters({ groups, resultsDir, rowCounts }) {
         source_group_id: g.groupId,
         group_key: g.groupKey,
         size: g.items.length,
-        count_total: totalIdsCount(g.items, rowCounts),
+        count_total: totalSoldCount(g.items, rowCounts),
         is_purchase_candidate: false,
         representative_attributes: g.items[0].attributes,
         items: g.items.map((it) => ({
@@ -162,7 +173,7 @@ function buildFinalClusters({ groups, resultsDir, rowCounts }) {
           .filter(Boolean);
         if (items.length === 0) continue;
         const cid = nextId(category, subcategory);
-        const countTotal = totalIdsCount(items, rowCounts);
+        const countTotal = totalSoldCount(items, rowCounts);
         finalClusters.push({
           cluster_id: cid,
           source: res.subgroups.length === 1 && results.length === 1 ? "agent_single_subgroup" : "agent_split",
@@ -202,6 +213,9 @@ function summarize(finalClusters) {
   const pending = finalClusters.filter(
     (c) => c.source === "pending_no_result",
   ).length;
+  const skipped = finalClusters.filter(
+    (c) => c.source === "skipped_below_threshold",
+  ).length;
   const totalRows = finalClusters.reduce((a, c) => a + c.size, 0);
   return {
     totalRows,
@@ -209,6 +223,7 @@ function summarize(finalClusters) {
     singletonClusters: singleton,
     multiItemClusters: multi,
     pendingClusters: pending,
+    skippedBelowThresholdClusters: skipped,
     purchaseCandidates: purchase,
     purchaseThreshold: PURCHASE_THRESHOLD,
   };
@@ -224,7 +239,7 @@ function main() {
     throw new Error(`clusters.json does not exist: ${clustersPath}`);
   }
   const { groups } = JSON.parse(fs.readFileSync(clustersPath, "utf8"));
-  const rowCounts = loadRowCounts(runDir);
+  const rowCounts = loadRowSoldCounts(runDir);
   const finalClusters = buildFinalClusters({ groups, resultsDir, rowCounts });
   const summary = summarize(finalClusters);
 
