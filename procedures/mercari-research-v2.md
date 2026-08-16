@@ -314,6 +314,22 @@ SendMessage({
 
 設計判断の詳細は [`adr/adr_2026_04_21_itemBrandによるcollect段階除外とブランドマスタの辞書代替不採用.md`](../adr/adr_2026_04_21_itemBrandによるcollect段階除外とブランドマスタの辞書代替不採用.md) を参照。
 
+### 公式カテゴリによる収集段階除外
+
+仕入れ対象外と決まっているカテゴリ (ファッション全般・ハンドメイド作家品と素材・薬機法対象の化粧品・電化製品 等) の商品は、`item.categoryId` を見て収集段階で捨てる。以降の全段階の処理量が減る (実測: 生データが約 39% 減)。
+
+- **除外対象の正本**: [`procedures/exclude_by_category/collect-excluded-categories.json`](../procedures/exclude_by_category/collect-excluded-categories.json)。1 エントリが自身と全子孫カテゴリを除外対象にし、`except` があればその部分木だけ対象から外す。各エントリは対応する除外基準 (`criteria`) と理由 (`why`) を持つ。除外基準の定義そのものは [`research/exclude_criteria.md`](../research/exclude_criteria.md)
+- **collect.js への反映**: `collect.js` はブラウザ上で動き `fs` を使えないため、判定対象の categoryId をソースに埋め込む。正本を編集したら必ず以下を実行する:
+
+```bash
+node procedures/exclude_by_category/build-collect-exclusion-ids.js
+```
+
+`collect.js` の `// <<< GENERATED:EXCLUDED_CATEGORY_IDS ... >>>` で囲まれたブロックが書き換わる。**このブロックを手で編集しない**。正本とカテゴリマスタが食い違う (カテゴリ体系の改定でカテゴリ名・階層が変わった等) 場合は `collect.js` を更新せずエラー終了するので、正本を直してから再実行する。`--check` を付けると書き換えずに差分の有無だけ確認できる。
+
+- **カテゴリマスタ再取得時**: `category_master/mercari_categories.json` を更新したら本スクリプトを再実行する (手順は [`procedures/exclude_by_category/README.md`](../procedures/exclude_by_category/README.md))
+- **第 4 段階との関係**: 第 4 段階の公式カテゴリ除外 (`excluded_categories.json`、root 名で 4 root を除外) は変更していない。本段階を通過した行に対して二重に効くフェイルセーフとして残す
+
 ---
 
 ## 第 2 段階: 販売実績の集約 (aggregate_step)
@@ -585,6 +601,7 @@ image_review/filtered_unflagged.json (verdict ∈ {keep, unclear} のみ、第 5
 - **狙い**: タイトルに該当語が無い取りこぼし (例「ミニトマト 3kg」「ふりかけのり」は food 辞書に無い) を categoryId で確実に除外し、Recall を底上げする
 - **トレードオフ**: 出品者がカテゴリを誤設定した雑貨 (例「LP レコード袋」を CD・DVD カテゴリに出品) を巻き込む可能性があるが、実データ検証で極小 (CD・DVD 598 件中 1 件) のため許容する
 - **除外候補カテゴリの増やし方**: `procedures/exclude_by_keywords_precision_check/` の Recall 検証で、ある root カテゴリの取りこぼしが多いと判明したら `excluded_categories.json` に root 名を追加する (運用は同 README §8.2 参照)
+- **第 1 段階との関係**: 第 1 段階「公式カテゴリによる収集段階除外」で該当行は既に収集されていないため、本段階のカテゴリ除外はフェイルセーフとして働く。除外リストは別ファイル (`excluded_categories.json` は root 名、第 1 段階は `collect-excluded-categories.json` でサブカテゴリ単位) で、統合していない
 
 #### primary 決定と分類カテゴリ
 

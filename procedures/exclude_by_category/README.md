@@ -6,16 +6,33 @@
 
 ```
 procedures/exclude_by_category/
-├── README.md                     # このファイル
-├── excluded_categories.json      # 除外対象の root カテゴリ定義
-├── extract_category_master.js    # 生データ → 抽出版マスタを生成 (再取得時に使う)
+├── README.md                            # このファイル
+├── collect-excluded-categories.json     # 第 1 段階 (collect) の除外対象定義 (サブカテゴリ単位)
+├── build-collect-exclusion-ids.js       # 上記 → collect.js の生成ブロックへ ID を展開
+├── excluded_categories.json             # 第 4 段階の除外対象 root カテゴリ定義
+├── extract_category_master.js           # 生データ → 抽出版マスタを生成 (再取得時に使う)
 └── category_master/
     ├── README.md                 # マスタファイルの説明
     ├── mercari_categories_raw.json   # 取得時の完全スナップショット (categoryGroups 含む)
     └── mercari_categories.json       # 除外判定が読む抽出版
 ```
 
-## 除外の仕組み
+カテゴリ除外は 2 段階に分かれている。**第 1 段階 (collect)** はサブカテゴリ単位で細かく指定し、そもそも収集しない。**第 4 段階** は root 名単位のフェイルセーフ。両者はファイルもロジックも独立している。
+
+## 除外の仕組み (第 1 段階 / collect)
+
+`research/collect.js` が検索 API のレスポンスを走査する時点で、`item.categoryId` が除外対象なら収集せずに捨てる。対象は `collect-excluded-categories.json` の各 entry とその全子孫カテゴリ (`except` があればその部分木を対象外にする)。
+
+`collect.js` はブラウザの `browser_evaluate` 上で動き `fs` を使えないため、判定対象の categoryId はソースへ埋め込む。正本を編集したら必ず展開スクリプトを実行する:
+
+```bash
+node procedures/exclude_by_category/build-collect-exclusion-ids.js          # collect.js の生成ブロックを更新
+node procedures/exclude_by_category/build-collect-exclusion-ids.js --check  # 書き換えず差分の有無だけ確認
+```
+
+`collect.js` の `// <<< GENERATED:EXCLUDED_CATEGORY_IDS ... >>>` で囲まれたブロックが対象。**手で編集しない**。正本のカテゴリ名・階層がマスタと食い違う場合はエラー終了して `collect.js` を更新しない (カテゴリ体系の改定に正本が追随できていない状態を検知するため)。
+
+## 除外の仕組み (第 4 段階 / フェイルセーフ)
 
 第 4 段階で `research/exclude_by_keywords.js` (キーワード除外と同じスクリプト) が `research/_classifier.js` 経由で実行する。各行の代表 `categoryId` を `category_master/mercari_categories.json` で root カテゴリ名 (`rootCategoryName`) に解決し、`excluded_categories.json` の `mercari.excluded_root_categories` に含まれれば除外する (`primary = 'category_excluded'`、キーワードより優先)。
 
@@ -82,10 +99,16 @@ node procedures/exclude_by_category/extract_category_master.js \
 - 件数が増減していないか (`meta.count`)
 - 既存の `excluded_categories.json` の root 名が新マスタにも存在するか (カテゴリ改定で root 名が変わっていないか)
 - 変わっていれば `excluded_categories.json` を新 root 名に合わせて更新する
+- `node build-collect-exclusion-ids.js` を実行する。カテゴリ名・階層の変更があればエラーで検出されるので、`collect-excluded-categories.json` を直してから再実行する
 
 ## 関連ファイル
 
-- `research/_classifier.js` — `categoryId → root` 解決とカテゴリ除外ロジック
+- `collect-excluded-categories.json` — 第 1 段階の除外対象の正本 (サブカテゴリ単位)
+- `build-collect-exclusion-ids.js` — 正本 → `research/collect.js` の生成ブロックへ ID を展開
+- `research/tests/test-collect-exclusion-ids.js` — 展開ロジックの単体テスト
+- `research/collect.js` — 第 1 段階の収集 (生成ブロックを埋め込む先)
+- `research/exclude_criteria.md` — 除外基準の定義 (`criteria` フィールドの対応先)
+- `research/_classifier.js` — `categoryId → root` 解決とカテゴリ除外ロジック (第 4 段階)
 - `research/exclude_by_keywords.js` — 第 4 段階の除外実行 (キーワード + カテゴリ両方)
-- `../mercari-research-v2.md` 第 4 段階 — 仕組みと設計
+- `../mercari-research-v2.md` 第 1 段階 / 第 4 段階 — 仕組みと設計
 - `../exclude_by_keywords_precision_check/README.md` §8.2 — 除外カテゴリの精査運用

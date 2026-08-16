@@ -1,0 +1,825 @@
+{
+  "_note": "collect 段階 (research/collect.js) で収集せずに捨てる Mercari 公式カテゴリの正本。各 entry は自身と全子孫カテゴリを除外対象にする (except があればその部分木のみ対象外)。除外基準の定義は research/exclude_criteria.md、criteria フィールドはそのカテゴリ名に対応する。本ファイルを編集したら build-collect-exclusion-ids.js を実行して collect.js の生成ブロックを更新すること。第 4 段階の excluded_categories.json とは別物 (あちらは root 名で判定するフェイルセーフ)。",
+  "meta": {
+    "categoryMasterFetchedAt": "2026-06-03",
+    "entryCount": 82,
+    "generatedIdsTarget": "research/collect.js",
+    "criteriaSource": "research/exclude_criteria.md"
+  },
+  "entries": [
+    {
+      "id": "3088",
+      "name": "ファッション",
+      "level": "0",
+      "rootCategoryName": "ファッション",
+      "parentCategoryName": null,
+      "criteria": "underwear / brand_imitation",
+      "why": "ファッション全般を仕入れ対象外とする物販オーナー方針。下着類 (新品証明が必要で回避) とブランド模造品の主な出品先を含む"
+    },
+    {
+      "id": "1844",
+      "name": "食品・飲料・酒",
+      "level": "0",
+      "rootCategoryName": "食品・飲料・酒",
+      "parentCategoryName": null,
+      "criteria": "food",
+      "why": "食品衛生法。食品・飲料・酒の全般"
+    },
+    {
+      "id": "9879",
+      "name": "CD・DVD・ブルーレイ",
+      "level": "0",
+      "rootCategoryName": "CD・DVD・ブルーレイ",
+      "parentCategoryName": null,
+      "criteria": "media",
+      "why": "CD・DVD・Blu-ray は仕入れ対象外という物販オーナー方針"
+    },
+    {
+      "id": "5",
+      "name": "本・雑誌・漫画",
+      "level": "0",
+      "rootCategoryName": "本・雑誌・漫画",
+      "parentCategoryName": null,
+      "criteria": "media",
+      "why": "本・雑誌・漫画は仕入れ対象外という物販オーナー方針"
+    },
+    {
+      "id": "1027",
+      "name": "チケット",
+      "level": "0",
+      "rootCategoryName": "チケット",
+      "parentCategoryName": null,
+      "criteria": "-",
+      "why": "チケット類の転売は各種規約・法令に抵触するため"
+    },
+    {
+      "id": "4136",
+      "name": "生活家電・空調",
+      "level": "0",
+      "rootCategoryName": "生活家電・空調",
+      "parentCategoryName": null,
+      "criteria": "electronics_check",
+      "why": "電気用品安全法 (PSE)。コンセント使用品・充電式の電化製品全般"
+    },
+    {
+      "id": "1097",
+      "name": "手芸素材・材料",
+      "level": "1",
+      "rootCategoryName": "ハンドメイド・手芸",
+      "parentCategoryName": "ハンドメイド・手芸",
+      "criteria": "handmade",
+      "why": "ハンドメイド用素材の一律除外 (ADR 2026-04-30)。生地・ビーズ・レジン・ファスナー等"
+    },
+    {
+      "id": "10611",
+      "name": "裁縫道具",
+      "level": "1",
+      "rootCategoryName": "ハンドメイド・手芸",
+      "parentCategoryName": "ハンドメイド・手芸",
+      "criteria": "handmade",
+      "why": "ハンドメイド用の道具"
+    },
+    {
+      "id": "108",
+      "name": "インテリア・生活道具",
+      "level": "1",
+      "rootCategoryName": "ハンドメイド・手芸",
+      "parentCategoryName": "ハンドメイド・手芸",
+      "criteria": "handmade",
+      "why": "作家品のインテリア・生活道具"
+    },
+    {
+      "id": "110",
+      "name": "ベビー・キッズ",
+      "level": "1",
+      "rootCategoryName": "ハンドメイド・手芸",
+      "parentCategoryName": "ハンドメイド・手芸",
+      "criteria": "handmade",
+      "why": "作家品のベビー・キッズ用品"
+    },
+    {
+      "id": "911",
+      "name": "ファッション小物",
+      "level": "1",
+      "rootCategoryName": "ハンドメイド・手芸",
+      "parentCategoryName": "ハンドメイド・手芸",
+      "criteria": "handmade",
+      "why": "作家品のファッション小物",
+      "except": [
+        {
+          "id": "910",
+          "name": "財布・ケース・小物入れ"
+        }
+      ]
+    },
+    {
+      "id": "908",
+      "name": "バッグ",
+      "level": "1",
+      "rootCategoryName": "ハンドメイド・手芸",
+      "parentCategoryName": "ハンドメイド・手芸",
+      "criteria": "handmade",
+      "why": "作家品のバッグ"
+    },
+    {
+      "id": "914",
+      "name": "アクセサリー",
+      "level": "1",
+      "rootCategoryName": "ハンドメイド・手芸",
+      "parentCategoryName": "ハンドメイド・手芸",
+      "criteria": "handmade",
+      "why": "作家品のアクセサリー"
+    },
+    {
+      "id": "106",
+      "name": "ファッション",
+      "level": "1",
+      "rootCategoryName": "ハンドメイド・手芸",
+      "parentCategoryName": "ハンドメイド・手芸",
+      "criteria": "handmade",
+      "why": "作家品の衣類"
+    },
+    {
+      "id": "918",
+      "name": "食器・キッチン用品",
+      "level": "1",
+      "rootCategoryName": "ハンドメイド・手芸",
+      "parentCategoryName": "ハンドメイド・手芸",
+      "criteria": "handmade",
+      "why": "作家品の食器・キッチン用品"
+    },
+    {
+      "id": "919",
+      "name": "家具",
+      "level": "1",
+      "rootCategoryName": "ハンドメイド・手芸",
+      "parentCategoryName": "ハンドメイド・手芸",
+      "criteria": "handmade",
+      "why": "作家品の家具"
+    },
+    {
+      "id": "1094",
+      "name": "アート・写真",
+      "level": "1",
+      "rootCategoryName": "ハンドメイド・手芸",
+      "parentCategoryName": "ハンドメイド・手芸",
+      "criteria": "handmade",
+      "why": "手描きイラスト・作家品のアート"
+    },
+    {
+      "id": "10376",
+      "name": "ウェディング",
+      "level": "1",
+      "rootCategoryName": "ハンドメイド・手芸",
+      "parentCategoryName": "ハンドメイド・手芸",
+      "criteria": "handmade",
+      "why": "作家品のウェディング小物"
+    },
+    {
+      "id": "10173",
+      "name": "ヘアアクセサリー",
+      "level": "1",
+      "rootCategoryName": "ハンドメイド・手芸",
+      "parentCategoryName": "ハンドメイド・手芸",
+      "criteria": "handmade",
+      "why": "作家品のヘアアクセサリー"
+    },
+    {
+      "id": "923",
+      "name": "ぬいぐるみ・人形・置物",
+      "level": "1",
+      "rootCategoryName": "ハンドメイド・手芸",
+      "parentCategoryName": "ハンドメイド・手芸",
+      "criteria": "handmade",
+      "why": "作家品のぬいぐるみ・人形・ぬい服"
+    },
+    {
+      "id": "10369",
+      "name": "ペットグッズ",
+      "level": "1",
+      "rootCategoryName": "ハンドメイド・手芸",
+      "parentCategoryName": "ハンドメイド・手芸",
+      "criteria": "handmade",
+      "why": "作家品のペットグッズ"
+    },
+    {
+      "id": "839",
+      "name": "デスクトップPC",
+      "level": "1",
+      "rootCategoryName": "スマホ・タブレット・パソコン",
+      "parentCategoryName": "スマホ・タブレット・パソコン",
+      "criteria": "electronics_check",
+      "why": "電気用品安全法 (PSE)。PC 本体・部品"
+    },
+    {
+      "id": "10712",
+      "name": "ゲーミングPC",
+      "level": "1",
+      "rootCategoryName": "スマホ・タブレット・パソコン",
+      "parentCategoryName": "スマホ・タブレット・パソコン",
+      "criteria": "electronics_check",
+      "why": "電気用品安全法 (PSE)。PC 本体・部品"
+    },
+    {
+      "id": "1156",
+      "name": "PCパーツ",
+      "level": "1",
+      "rootCategoryName": "スマホ・タブレット・パソコン",
+      "parentCategoryName": "スマホ・タブレット・パソコン",
+      "criteria": "electronics_check",
+      "why": "電気用品安全法 (PSE)。PC 本体・部品"
+    },
+    {
+      "id": "1262",
+      "name": "ディスプレイ・モニター",
+      "level": "1",
+      "rootCategoryName": "スマホ・タブレット・パソコン",
+      "parentCategoryName": "スマホ・タブレット・パソコン",
+      "criteria": "electronics_check",
+      "why": "電気用品安全法 (PSE)。PC 本体・部品"
+    },
+    {
+      "id": "1106",
+      "name": "電子書籍リーダー",
+      "level": "1",
+      "rootCategoryName": "スマホ・タブレット・パソコン",
+      "parentCategoryName": "スマホ・タブレット・パソコン",
+      "criteria": "electronics_check",
+      "why": "電気用品安全法 (PSE)。PC 本体・部品"
+    },
+    {
+      "id": "3694",
+      "name": "IoTデバイス(スマートデバイス)",
+      "level": "1",
+      "rootCategoryName": "スマホ・タブレット・パソコン",
+      "parentCategoryName": "スマホ・タブレット・パソコン",
+      "criteria": "electronics_check",
+      "why": "電気用品安全法 (PSE)。PC 本体・部品"
+    },
+    {
+      "id": "859",
+      "name": "スマートフォン本体",
+      "level": "2",
+      "rootCategoryName": "スマホ・タブレット・パソコン",
+      "parentCategoryName": "スマートフォン・携帯電話",
+      "criteria": "electronics_check",
+      "why": "電気用品安全法 (PSE)・電波法。端末本体"
+    },
+    {
+      "id": "860",
+      "name": "携帯電話本体",
+      "level": "2",
+      "rootCategoryName": "スマホ・タブレット・パソコン",
+      "parentCategoryName": "スマートフォン・携帯電話",
+      "criteria": "electronics_check",
+      "why": "電気用品安全法 (PSE)・電波法。端末本体"
+    },
+    {
+      "id": "861",
+      "name": "PHS本体",
+      "level": "2",
+      "rootCategoryName": "スマホ・タブレット・パソコン",
+      "parentCategoryName": "スマートフォン・携帯電話",
+      "criteria": "electronics_check",
+      "why": "電気用品安全法 (PSE)・電波法。端末本体"
+    },
+    {
+      "id": "3887",
+      "name": "SIMカード",
+      "level": "2",
+      "rootCategoryName": "スマホ・タブレット・パソコン",
+      "parentCategoryName": "スマートフォン・携帯電話",
+      "criteria": "electronics_check",
+      "why": "電波法。通信契約に紐づく SIM"
+    },
+    {
+      "id": "3676",
+      "name": "Apple Watch本体",
+      "level": "2",
+      "rootCategoryName": "スマホ・タブレット・パソコン",
+      "parentCategoryName": "スマートウォッチ・ウェアラブル",
+      "criteria": "electronics_check",
+      "why": "電気用品安全法 (PSE)。ウェアラブル端末本体"
+    },
+    {
+      "id": "3683",
+      "name": "その他スマートウォッチ本体",
+      "level": "2",
+      "rootCategoryName": "スマホ・タブレット・パソコン",
+      "parentCategoryName": "スマートウォッチ・ウェアラブル",
+      "criteria": "electronics_check",
+      "why": "電気用品安全法 (PSE)。ウェアラブル端末本体"
+    },
+    {
+      "id": "3690",
+      "name": "活動量計本体",
+      "level": "2",
+      "rootCategoryName": "スマホ・タブレット・パソコン",
+      "parentCategoryName": "スマートウォッチ・ウェアラブル",
+      "criteria": "electronics_check",
+      "why": "電気用品安全法 (PSE)。ウェアラブル端末本体"
+    },
+    {
+      "id": "10792",
+      "name": "スマートリング",
+      "level": "2",
+      "rootCategoryName": "スマホ・タブレット・パソコン",
+      "parentCategoryName": "スマートウォッチ・ウェアラブル",
+      "criteria": "electronics_check",
+      "why": "電気用品安全法 (PSE)。ウェアラブル端末本体"
+    },
+    {
+      "id": "3692",
+      "name": "スマートグラス",
+      "level": "2",
+      "rootCategoryName": "スマホ・タブレット・パソコン",
+      "parentCategoryName": "スマートウォッチ・ウェアラブル",
+      "criteria": "electronics_check",
+      "why": "電気用品安全法 (PSE)。ウェアラブル端末本体"
+    },
+    {
+      "id": "3833",
+      "name": "iPad本体",
+      "level": "2",
+      "rootCategoryName": "スマホ・タブレット・パソコン",
+      "parentCategoryName": "タブレット",
+      "criteria": "electronics_check",
+      "why": "電気用品安全法 (PSE)。タブレット本体"
+    },
+    {
+      "id": "3838",
+      "name": "Androidタブレット本体",
+      "level": "2",
+      "rootCategoryName": "スマホ・タブレット・パソコン",
+      "parentCategoryName": "タブレット",
+      "criteria": "electronics_check",
+      "why": "電気用品安全法 (PSE)。タブレット本体"
+    },
+    {
+      "id": "3843",
+      "name": "Windowsタブレット本体",
+      "level": "2",
+      "rootCategoryName": "スマホ・タブレット・パソコン",
+      "parentCategoryName": "タブレット",
+      "criteria": "electronics_check",
+      "why": "電気用品安全法 (PSE)。タブレット本体"
+    },
+    {
+      "id": "3702",
+      "name": "MacBook本体",
+      "level": "2",
+      "rootCategoryName": "スマホ・タブレット・パソコン",
+      "parentCategoryName": "ノートPC",
+      "criteria": "electronics_check",
+      "why": "電気用品安全法 (PSE)。ノート PC 本体"
+    },
+    {
+      "id": "3704",
+      "name": "Windowsノート本体",
+      "level": "2",
+      "rootCategoryName": "スマホ・タブレット・パソコン",
+      "parentCategoryName": "ノートPC",
+      "criteria": "electronics_check",
+      "why": "電気用品安全法 (PSE)。ノート PC 本体"
+    },
+    {
+      "id": "3706",
+      "name": "Chromebook本体",
+      "level": "2",
+      "rootCategoryName": "スマホ・タブレット・パソコン",
+      "parentCategoryName": "ノートPC",
+      "criteria": "electronics_check",
+      "why": "電気用品安全法 (PSE)。ノート PC 本体"
+    },
+    {
+      "id": "3708",
+      "name": "その他ノートPC本体",
+      "level": "2",
+      "rootCategoryName": "スマホ・タブレット・パソコン",
+      "parentCategoryName": "ノートPC",
+      "criteria": "electronics_check",
+      "why": "電気用品安全法 (PSE)。ノート PC 本体"
+    },
+    {
+      "id": "3732",
+      "name": "プリンター・複合機",
+      "level": "2",
+      "rootCategoryName": "スマホ・タブレット・パソコン",
+      "parentCategoryName": "PC周辺機器",
+      "criteria": "electronics_check",
+      "why": "電気用品安全法 (PSE)・電波法。通電する PC 周辺機器"
+    },
+    {
+      "id": "3756",
+      "name": "外付けハードディスク・ドライブ",
+      "level": "2",
+      "rootCategoryName": "スマホ・タブレット・パソコン",
+      "parentCategoryName": "PC周辺機器",
+      "criteria": "electronics_check",
+      "why": "電気用品安全法 (PSE)・電波法。通電する PC 周辺機器"
+    },
+    {
+      "id": "3770",
+      "name": "ルーター・ネットワーク機器",
+      "level": "2",
+      "rootCategoryName": "スマホ・タブレット・パソコン",
+      "parentCategoryName": "PC周辺機器",
+      "criteria": "electronics_check",
+      "why": "電気用品安全法 (PSE)・電波法。通電する PC 周辺機器"
+    },
+    {
+      "id": "3811",
+      "name": "スキャナー",
+      "level": "2",
+      "rootCategoryName": "スマホ・タブレット・パソコン",
+      "parentCategoryName": "PC周辺機器",
+      "criteria": "electronics_check",
+      "why": "電気用品安全法 (PSE)・電波法。通電する PC 周辺機器"
+    },
+    {
+      "id": "3829",
+      "name": "Webカメラ",
+      "level": "2",
+      "rootCategoryName": "スマホ・タブレット・パソコン",
+      "parentCategoryName": "PC周辺機器",
+      "criteria": "electronics_check",
+      "why": "電気用品安全法 (PSE)・電波法。通電する PC 周辺機器"
+    },
+    {
+      "id": "3830",
+      "name": "UPS(無停電電源装置)",
+      "level": "2",
+      "rootCategoryName": "スマホ・タブレット・パソコン",
+      "parentCategoryName": "PC周辺機器",
+      "criteria": "electronics_check",
+      "why": "電気用品安全法 (PSE)・電波法。通電する PC 周辺機器"
+    },
+    {
+      "id": "3831",
+      "name": "PCスピーカー",
+      "level": "2",
+      "rootCategoryName": "スマホ・タブレット・パソコン",
+      "parentCategoryName": "PC周辺機器",
+      "criteria": "electronics_check",
+      "why": "電気用品安全法 (PSE)・電波法。通電する PC 周辺機器"
+    },
+    {
+      "id": "3710",
+      "name": "キーボード",
+      "level": "2",
+      "rootCategoryName": "スマホ・タブレット・パソコン",
+      "parentCategoryName": "PC周辺機器",
+      "criteria": "electronics_check",
+      "why": "電気用品安全法 (PSE)・電波法。通電する PC 周辺機器"
+    },
+    {
+      "id": "3716",
+      "name": "マウス・トラックボール",
+      "level": "2",
+      "rootCategoryName": "スマホ・タブレット・パソコン",
+      "parentCategoryName": "PC周辺機器",
+      "criteria": "electronics_check",
+      "why": "電気用品安全法 (PSE)・電波法。通電する PC 周辺機器"
+    },
+    {
+      "id": "3728",
+      "name": "PC用ゲームコントローラー・コンバーター",
+      "level": "2",
+      "rootCategoryName": "スマホ・タブレット・パソコン",
+      "parentCategoryName": "PC周辺機器",
+      "criteria": "electronics_check",
+      "why": "電気用品安全法 (PSE)・電波法。通電する PC 周辺機器"
+    },
+    {
+      "id": "3226",
+      "name": "サプリメント",
+      "level": "1",
+      "rootCategoryName": "ダイエット・健康",
+      "parentCategoryName": "ダイエット・健康",
+      "criteria": "food / medical",
+      "why": "食品衛生法・薬機法。経口摂取する健康食品"
+    },
+    {
+      "id": "831",
+      "name": "ダイエット食品",
+      "level": "1",
+      "rootCategoryName": "ダイエット・健康",
+      "parentCategoryName": "ダイエット・健康",
+      "criteria": "food",
+      "why": "食品衛生法。経口摂取するダイエット食品"
+    },
+    {
+      "id": "3273",
+      "name": "健康飲料",
+      "level": "1",
+      "rootCategoryName": "ダイエット・健康",
+      "parentCategoryName": "ダイエット・健康",
+      "criteria": "food",
+      "why": "食品衛生法。経口摂取する健康飲料"
+    },
+    {
+      "id": "3267",
+      "name": "プロテイン",
+      "level": "1",
+      "rootCategoryName": "ダイエット・健康",
+      "parentCategoryName": "ダイエット・健康",
+      "criteria": "food",
+      "why": "食品衛生法。経口摂取するプロテイン"
+    },
+    {
+      "id": "1263",
+      "name": "スキンケア・基礎化粧品",
+      "level": "1",
+      "rootCategoryName": "コスメ・美容",
+      "parentCategoryName": "コスメ・美容",
+      "criteria": "cosmetics_yakki",
+      "why": "薬機法。スキンケア化粧品"
+    },
+    {
+      "id": "88",
+      "name": "ベースメイク",
+      "level": "1",
+      "rootCategoryName": "コスメ・美容",
+      "parentCategoryName": "コスメ・美容",
+      "criteria": "cosmetics_yakki",
+      "why": "薬機法。ベースメイク化粧品"
+    },
+    {
+      "id": "87",
+      "name": "香水",
+      "level": "1",
+      "rootCategoryName": "コスメ・美容",
+      "parentCategoryName": "コスメ・美容",
+      "criteria": "cosmetics_yakki",
+      "why": "薬機法。香水・フレグランス"
+    },
+    {
+      "id": "3604",
+      "name": "フェイスケア",
+      "level": "1",
+      "rootCategoryName": "コスメ・美容",
+      "parentCategoryName": "コスメ・美容",
+      "criteria": "cosmetics_yakki",
+      "why": "薬機法。フェイスケア化粧品"
+    },
+    {
+      "id": "1237",
+      "name": "美容家電",
+      "level": "1",
+      "rootCategoryName": "コスメ・美容",
+      "parentCategoryName": "コスメ・美容",
+      "criteria": "cosmetics_yakki / electronics_check",
+      "why": "薬機法・電気用品安全法 (PSE)。通電する美容家電、かみそり"
+    },
+    {
+      "id": "1387",
+      "name": "メイクアップ",
+      "level": "1",
+      "rootCategoryName": "コスメ・美容",
+      "parentCategoryName": "コスメ・美容",
+      "criteria": "cosmetics_yakki",
+      "why": "薬機法。メイクアップ化粧品とメイク道具",
+      "except": [
+        {
+          "id": "3522",
+          "name": "まつ毛・つけまつ毛用品"
+        }
+      ]
+    },
+    {
+      "id": "90",
+      "name": "ヘアケア",
+      "level": "1",
+      "rootCategoryName": "コスメ・美容",
+      "parentCategoryName": "コスメ・美容",
+      "criteria": "cosmetics_yakki",
+      "why": "薬機法。頭皮・毛髪に塗布するヘアケア用品",
+      "except": [
+        {
+          "id": "811",
+          "name": "ヘアブラシ・コーム"
+        },
+        {
+          "id": "3615",
+          "name": "育毛・スカルプケア"
+        },
+        {
+          "id": "3638",
+          "name": "ヘアカーラー"
+        },
+        {
+          "id": "3639",
+          "name": "ヘアバンド"
+        },
+        {
+          "id": "3640",
+          "name": "ナイトキャップ"
+        }
+      ]
+    },
+    {
+      "id": "91",
+      "name": "ボディケア",
+      "level": "1",
+      "rootCategoryName": "コスメ・美容",
+      "parentCategoryName": "コスメ・美容",
+      "criteria": "cosmetics_yakki",
+      "why": "薬機法。肌に塗布するボディケア用品",
+      "except": [
+        {
+          "id": "3582",
+          "name": "ボディマッサージ・スクラブ"
+        },
+        {
+          "id": "815",
+          "name": "制汗・デオドラント"
+        },
+        {
+          "id": "817",
+          "name": "入浴剤・バスソルト"
+        },
+        {
+          "id": "819",
+          "name": "フットケア"
+        }
+      ]
+    },
+    {
+      "id": "89",
+      "name": "ネイルケア",
+      "level": "1",
+      "rootCategoryName": "コスメ・美容",
+      "parentCategoryName": "コスメ・美容",
+      "criteria": "cosmetics_yakki",
+      "why": "薬機法。爪に塗布するネイル化粧品",
+      "except": [
+        {
+          "id": "803",
+          "name": "ネイルチップ・付け爪"
+        },
+        {
+          "id": "801",
+          "name": "ネイルアート用品(筆など)"
+        },
+        {
+          "id": "1393",
+          "name": "ネイルパーツ"
+        },
+        {
+          "id": "804",
+          "name": "手入れ用具"
+        }
+      ]
+    },
+    {
+      "id": "3456",
+      "name": "歯磨き粉",
+      "level": "2",
+      "rootCategoryName": "コスメ・美容",
+      "parentCategoryName": "オーラルケア",
+      "criteria": "cosmetics_yakki",
+      "why": "薬機法。医薬部外品の歯磨き粉"
+    },
+    {
+      "id": "3455",
+      "name": "マウスウォッシュ",
+      "level": "2",
+      "rootCategoryName": "コスメ・美容",
+      "parentCategoryName": "オーラルケア",
+      "criteria": "cosmetics_yakki",
+      "why": "薬機法。医薬部外品のマウスウォッシュ"
+    },
+    {
+      "id": "3458",
+      "name": "ホワイトニング",
+      "level": "2",
+      "rootCategoryName": "コスメ・美容",
+      "parentCategoryName": "オーラルケア",
+      "criteria": "cosmetics_yakki",
+      "why": "薬機法。歯のホワイトニング剤"
+    },
+    {
+      "id": "3465",
+      "name": "うがい薬",
+      "level": "2",
+      "rootCategoryName": "コスメ・美容",
+      "parentCategoryName": "オーラルケア",
+      "criteria": "cosmetics_yakki",
+      "why": "薬機法。うがい薬"
+    },
+    {
+      "id": "3461",
+      "name": "入れ歯安定剤",
+      "level": "2",
+      "rootCategoryName": "コスメ・美容",
+      "parentCategoryName": "オーラルケア",
+      "criteria": "cosmetics_yakki",
+      "why": "薬機法。入れ歯安定剤"
+    },
+    {
+      "id": "3462",
+      "name": "入れ歯洗浄剤",
+      "level": "2",
+      "rootCategoryName": "コスメ・美容",
+      "parentCategoryName": "オーラルケア",
+      "criteria": "cosmetics_yakki",
+      "why": "薬機法。入れ歯洗浄剤"
+    },
+    {
+      "id": "99",
+      "name": "オーディオ機器",
+      "level": "1",
+      "rootCategoryName": "テレビ・オーディオ・カメラ",
+      "parentCategoryName": "テレビ・オーディオ・カメラ",
+      "criteria": "electronics_check",
+      "why": "電気用品安全法 (PSE)・電波法。オーディオ機器。有線イヤホンは電源も電波も使わないため対象外 (ワイヤレスイヤホンは電波法対象なので除外を維持)",
+      "except": [
+        {
+          "id": "3927",
+          "name": "有線イヤホン・リケーブル"
+        }
+      ]
+    },
+    {
+      "id": "843",
+      "name": "デジタルカメラ",
+      "level": "2",
+      "rootCategoryName": "テレビ・オーディオ・カメラ",
+      "parentCategoryName": "カメラ",
+      "criteria": "electronics_check",
+      "why": "電気用品安全法 (PSE)。カメラ本体"
+    },
+    {
+      "id": "844",
+      "name": "フィルムカメラ",
+      "level": "2",
+      "rootCategoryName": "テレビ・オーディオ・カメラ",
+      "parentCategoryName": "カメラ",
+      "criteria": "electronics_check",
+      "why": "電気用品安全法 (PSE)。カメラ本体"
+    },
+    {
+      "id": "845",
+      "name": "ビデオカメラ",
+      "level": "2",
+      "rootCategoryName": "テレビ・オーディオ・カメラ",
+      "parentCategoryName": "カメラ",
+      "criteria": "electronics_check",
+      "why": "電気用品安全法 (PSE)。カメラ本体"
+    },
+    {
+      "id": "4021",
+      "name": "アクションカメラ・ウェアラブルカメラ",
+      "level": "2",
+      "rootCategoryName": "テレビ・オーディオ・カメラ",
+      "parentCategoryName": "カメラ",
+      "criteria": "electronics_check",
+      "why": "電気用品安全法 (PSE)。カメラ本体"
+    },
+    {
+      "id": "4027",
+      "name": "インスタントカメラ",
+      "level": "2",
+      "rootCategoryName": "テレビ・オーディオ・カメラ",
+      "parentCategoryName": "カメラ",
+      "criteria": "electronics_check",
+      "why": "電気用品安全法 (PSE)。カメラ本体"
+    },
+    {
+      "id": "4122",
+      "name": "ペットカメラ",
+      "level": "2",
+      "rootCategoryName": "テレビ・オーディオ・カメラ",
+      "parentCategoryName": "カメラ",
+      "criteria": "electronics_check",
+      "why": "電気用品安全法 (PSE)。カメラ本体"
+    },
+    {
+      "id": "10841",
+      "name": "キッズカメラ",
+      "level": "2",
+      "rootCategoryName": "テレビ・オーディオ・カメラ",
+      "parentCategoryName": "カメラ",
+      "criteria": "electronics_check",
+      "why": "電気用品安全法 (PSE)。カメラ本体"
+    },
+    {
+      "id": "3902",
+      "name": "レコーダー",
+      "level": "2",
+      "rootCategoryName": "テレビ・オーディオ・カメラ",
+      "parentCategoryName": "テレビ・映像機器",
+      "criteria": "electronics_check",
+      "why": "電気用品安全法 (PSE)。映像機器本体"
+    },
+    {
+      "id": "3906",
+      "name": "プレーヤー",
+      "level": "2",
+      "rootCategoryName": "テレビ・オーディオ・カメラ",
+      "parentCategoryName": "テレビ・映像機器",
+      "criteria": "electronics_check",
+      "why": "電気用品安全法 (PSE)。映像機器本体"
+    }
+  ]
+}
